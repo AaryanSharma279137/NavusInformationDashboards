@@ -1,0 +1,1860 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Records — Owner & Team Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<style>
+:root{
+  --bg-deep:#dfe4ea; --bg-deep-2:#d2d9e1;
+  --panel:#ffffff; --panel-2:#eef1f6;
+  --panel-border:#d0d7de;
+  --gold:#1f3a5f; --gold-bright:#2f5d94; --gold-dim: rgba(31,58,95,0.28);
+  --text:#10161f; --muted:#435163; --muted-2:#6b7a8c;
+  --active-c:#166841; --gone-c:#ab2b23; --hold-c:#94580c; --blue-c:#2f5d94;
+  --radius:10px;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;
+  background:linear-gradient(180deg,#eaeef3 0%,var(--bg-deep) 340px),
+             radial-gradient(1100px 500px at 12% -10%, rgba(31,58,95,0.06), transparent 55%),
+             var(--bg-deep);
+  color:var(--text); font-family:'Segoe UI',Lato,sans-serif;
+  min-height:100vh;
+}
+::selection{ background:var(--gold-dim); color:var(--text); }
+::-webkit-scrollbar{ height:10px; width:10px; }
+::-webkit-scrollbar-track{ background:var(--bg-deep-2); }
+::-webkit-scrollbar-thumb{ background:var(--panel-2); border-radius:10px; border:1px solid var(--panel-border); }
+h1,h2,h3,.display{ font-family:Georgia,'Source Serif 4',serif; margin:0; }
+.eyebrow{ text-transform:uppercase; letter-spacing:.16em; font-size:11px; color:var(--gold); font-weight:600; }
+button{ font-family:inherit; }
+input,select,textarea{ font-family:inherit; }
+
+/* ---------- Role / Lock screens ---------- */
+#role-screen, #lock-screen{
+  position:fixed; inset:0; z-index:100;
+  background:radial-gradient(1000px 600px at 20% 10%, rgba(31,58,95,0.10), transparent 60%), var(--bg-deep);
+  display:flex; align-items:center; justify-content:center; padding:20px;
+}
+.lock-box{
+  background:linear-gradient(160deg, var(--panel), var(--panel-2));
+  border:1px solid var(--panel-border); border-radius:20px;
+  padding:38px 36px; width:420px; max-width:94vw; text-align:center;
+  box-shadow:0 20px 50px rgba(15,23,42,0.16);
+  animation:lockIn .4s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes lockIn{ from{opacity:0; transform:translateY(14px) scale(.98);} to{opacity:1; transform:translateY(0) scale(1);} }
+
+/* ---------- Welcome screen (after employee login) ---------- */
+#welcome-screen{
+  position:fixed; inset:0; z-index:150;
+  background:radial-gradient(1200px 700px at 50% 15%, rgba(31,58,95,0.16), transparent 60%), var(--bg-deep);
+  display:flex; align-items:center; justify-content:center; padding:20px;
+}
+.welcome-box{ text-align:center; animation:welcomePop .55s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes welcomePop{ 0%{opacity:0; transform:scale(.85) translateY(18px);} 65%{opacity:1; transform:scale(1.04) translateY(-4px);} 100%{opacity:1; transform:scale(1) translateY(0);} }
+.welcome-icon{ font-size:54px; display:inline-block; animation:welcomeWave 1.1s ease-in-out .3s infinite; }
+@keyframes welcomeWave{ 0%,100%{ transform:rotate(0deg);} 25%{transform:rotate(18deg);} 75%{transform:rotate(-12deg);} }
+.welcome-title{ font-family:Georgia,'Source Serif 4',serif; font-size:14px; letter-spacing:.2em; text-transform:uppercase; color:var(--gold); font-weight:700; margin-top:10px; }
+.welcome-name{ font-family:Georgia,'Source Serif 4',serif; font-size:36px; font-weight:800; color:var(--text); margin-top:6px; animation:welcomeSlideUp .6s .15s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes welcomeSlideUp{ from{opacity:0; transform:translateY(14px);} to{opacity:1; transform:translateY(0);} }
+.welcome-sub{ font-size:12px; color:var(--muted); margin-top:16px; letter-spacing:.03em; animation:welcomeSlideUp .6s .3s cubic-bezier(.2,.8,.2,1) both; }
+.lock-icon{ width:52px; height:52px; margin:0 auto 16px; border-radius:14px; background:rgba(31,58,95,0.1); border:1px solid var(--panel-border); display:flex; align-items:center; justify-content:center; font-size:22px; }
+.lock-box h2{ font-size:20px; margin-bottom:6px; }
+.lock-box p.sub{ font-size:12.5px; color:var(--muted); margin:0 0 22px; line-height:1.55; }
+.field{ text-align:left; margin-bottom:14px; }
+.field label{ display:block; font-size:11px; color:var(--muted-2); margin-bottom:5px; letter-spacing:.04em; text-transform:uppercase; }
+.lock-box input, .lock-box select, .field input, .field select, .field textarea{
+  width:100%; padding:12px 13px; border-radius:9px; border:1px solid var(--panel-border);
+  background:var(--bg-deep-2); color:var(--text); outline:none; font-size:14px;
+  transition:border-color .2s ease;
+}
+.lock-box input:focus, .field input:focus, .field select:focus, .field textarea:focus{ border-color:var(--gold-bright); }
+.field textarea{ resize:vertical; min-height:70px; }
+.lock-btn, .btn-solid{
+  width:100%; padding:13px; border-radius:9px; border:none; cursor:pointer;
+  background:linear-gradient(160deg, var(--gold-bright), var(--gold)); color:#fff;
+  font-weight:700; font-size:14px; transition:transform .2s ease; margin-top:4px;
+}
+.lock-btn:hover, .btn-solid:hover{ transform:translateY(-1px); }
+.lock-err{ font-size:12px; color:var(--gone-c); margin-top:10px; min-height:14px; }
+.lock-ok{ font-size:12px; color:var(--active-c); margin-top:10px; min-height:14px; }
+.lock-link, .back-mini{ font-size:12px; color:var(--gold-bright); margin-top:16px; cursor:pointer; text-decoration:underline; text-underline-offset:3px; display:inline-block; }
+.back-mini{ color:var(--muted-2); text-decoration:none; }
+.back-mini:hover{ color:var(--gold-bright); }
+
+.role-cards{ display:flex; gap:18px; flex-wrap:wrap; justify-content:center; }
+.role-card{
+  width:230px; background:linear-gradient(160deg, var(--panel), var(--panel-2));
+  border:1px solid var(--panel-border); border-radius:18px; padding:30px 20px; text-align:center;
+  cursor:pointer; transition:all .2s ease; box-shadow:0 12px 30px rgba(15,23,42,0.10);
+}
+.role-card:hover{ transform:translateY(-4px); border-color:var(--gold-bright); box-shadow:0 16px 36px rgba(31,58,95,0.18); }
+.role-card .ric{ font-size:34px; margin-bottom:10px; }
+.role-card h3{ font-size:16px; margin-bottom:6px; }
+.role-card p{ font-size:11.5px; color:var(--muted); margin:0; line-height:1.5; }
+
+/* ---------- App shell ---------- */
+#app{ display:none; }
+header{
+  position:sticky; top:0; z-index:40; display:flex; align-items:center; justify-content:space-between;
+  padding:14px 28px; background:rgba(255,255,255,0.90); backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--panel-border); flex-wrap:wrap; gap:10px;
+}
+.brand{ display:flex; align-items:center; gap:12px; }
+.orbit-mark{ width:38px; height:38px; border-radius:9px; background:linear-gradient(155deg,var(--gold-bright),var(--gold) 65%,#14263f 100%); box-shadow:0 2px 8px rgba(31,58,95,0.3); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:900; font-size:16px; }
+.brand-text .t1{ font-size:16px; font-weight:700; font-family:Georgia,serif; }
+.brand-text .t2{ font-size:10px; color:var(--muted); letter-spacing:.14em; text-transform:uppercase; }
+.header-right{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.btn{
+  display:inline-flex; align-items:center; gap:7px; padding:9px 15px; border-radius:9px;
+  border:1px solid var(--gold-dim); background:transparent; color:var(--gold-bright);
+  font-weight:600; font-size:12.5px; cursor:pointer; transition:all .2s ease; white-space:nowrap;
+}
+.btn:hover{ background:rgba(31,58,95,0.10); transform:translateY(-1px); }
+.btn.ghost{ border-color:var(--panel-border); color:var(--muted); }
+.btn.solid{ background:linear-gradient(160deg,var(--gold-bright),var(--gold)); color:#fff; border:none; }
+.btn.active{ background:rgba(31,58,95,0.12); }
+.btn.small{ padding:6px 10px; font-size:11.5px; }
+.btn.danger{ border-color:rgba(171,43,35,0.35); color:var(--gone-c); }
+.btn.danger:hover{ background:rgba(171,43,35,0.08); }
+
+main{ max-width:1280px; margin:0 auto; padding:24px 20px 60px; }
+.section-title{ font-size:20px; margin-bottom:4px; }
+.section-sub{ font-size:12.5px; color:var(--muted); margin-bottom:18px; }
+.panel{ background:var(--panel); border:1px solid var(--panel-border); border-radius:14px; padding:20px; margin-bottom:20px; }
+.panel-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+.grid2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.grid3{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px; }
+.grid4{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px; }
+.grid5{ display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:18px; }
+@media (max-width:1000px){ .grid5{ grid-template-columns:repeat(2,1fr); } }
+@media (max-width:900px){ .grid4{ grid-template-columns:repeat(2,1fr); } }
+@media (max-width:720px){ .grid2,.grid3{ grid-template-columns:1fr; } }
+
+.stat-card{ background:var(--panel); border:1px solid var(--panel-border); border-radius:12px; padding:16px; text-align:center; }
+.stat-card .val{ font-size:23px; font-weight:800; color:var(--gold-bright); }
+.stat-card .val.c-active{ color:var(--active-c); }
+.stat-card .val.c-hold{ color:var(--hold-c); }
+.stat-card .val.c-gone{ color:var(--gone-c); }
+.stat-card .lbl{ font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-top:4px; }
+
+.target-strip{
+  display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+  background:linear-gradient(120deg, rgba(31,58,95,0.08), rgba(47,93,148,0.04));
+  border:1px solid var(--gold-dim); border-radius:14px; padding:16px 20px; margin-bottom:6px;
+}
+.target-strip .tlabel{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--gold); font-weight:700; }
+.target-strip .tval{ font-size:22px; font-weight:800; color:var(--gold); }
+.target-bar{ flex:1; min-width:160px; height:10px; border-radius:6px; background:var(--panel-2); overflow:hidden; border:1px solid var(--panel-border); display:flex; }
+.target-bar-fill{ height:100%; background:linear-gradient(90deg,var(--gold-bright),var(--active-c)); transition:width .4s ease; }
+.target-pct{ font-size:12px; font-weight:700; color:var(--muted); }
+.target-bar-lg{ height:16px; border-radius:8px; }
+.target-seg{ height:100%; transition:opacity .15s ease, filter .15s ease; cursor:default; }
+.target-seg:hover{ opacity:.82; filter:brightness(1.12); }
+.target-legend-row{ display:flex; flex-wrap:wrap; gap:8px 14px; margin:8px 2px 18px; }
+.target-legend-chip{ display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); cursor:default; }
+.target-legend-chip i{ width:9px; height:9px; border-radius:3px; display:inline-block; flex:none; }
+.target-strip-sm{ padding:11px 20px; margin-bottom:18px; }
+.target-strip-sm .tval-sm{ font-size:16px; }
+.target-bar-sm{ height:7px; min-width:120px; }
+
+table.data-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+table.data-table th{ text-align:left; padding:9px 10px; background:var(--panel-2); color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; border-bottom:1px solid var(--panel-border); white-space:nowrap; }
+table.data-table td{ padding:9px 10px; border-bottom:1px solid var(--panel-border); white-space:nowrap; }
+table.data-table tr:hover td{ background:rgba(31,58,95,0.03); }
+.table-wrap{ overflow-x:auto; }
+.name-cell{ font-weight:700; }
+.pill{ display:inline-block; padding:3px 10px; border-radius:20px; font-size:10.5px; font-weight:700; }
+.pill.won{ background:rgba(22,104,65,0.12); color:var(--active-c); }
+.pill.prog{ background:rgba(47,93,148,0.12); color:var(--gold-bright); }
+.pill.hold{ background:rgba(148,88,12,0.12); color:var(--hold-c); }
+.pill.lost{ background:rgba(171,43,35,0.12); color:var(--gone-c); }
+.pill.pending{ background:rgba(171,43,35,0.10); color:var(--gone-c); }
+.pill.done{ background:rgba(22,104,65,0.12); color:var(--active-c); }
+.row-actions{ display:flex; gap:6px; }
+.icon-btn{ border:1px solid var(--panel-border); background:var(--panel-2); border-radius:7px; padding:5px 8px; cursor:pointer; font-size:11.5px; }
+.icon-btn:hover{ border-color:var(--gold-bright); }
+.icon-btn.del:hover{ border-color:var(--gone-c); color:var(--gone-c); }
+
+/* the followup toggle switch */
+.fu-toggle{
+  width:46px; height:24px; border-radius:20px; border:none; cursor:pointer; position:relative;
+  background:linear-gradient(160deg,#e0453b,#ab2b23); box-shadow:0 0 0 0 rgba(171,43,35,0.5);
+  animation:fuPulse 1.6s infinite;
+}
+.fu-toggle::after{
+  content:''; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%;
+  background:#fff; transition:left .2s ease;
+}
+.fu-toggle.on{ background:linear-gradient(160deg,#22a06b,#166841); animation:none; box-shadow:none; }
+.fu-toggle.on::after{ left:25px; }
+@keyframes fuPulse{
+  0%{ box-shadow:0 0 0 0 rgba(171,43,35,0.55); }
+  70%{ box-shadow:0 0 0 9px rgba(171,43,35,0); }
+  100%{ box-shadow:0 0 0 0 rgba(171,43,35,0); }
+}
+
+.filter-row{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.filter-row select, .filter-row input{ padding:9px 12px; border-radius:9px; border:1px solid var(--panel-border); background:var(--panel-2); font-size:12.5px; color:var(--text); }
+
+.modal-overlay{ position:fixed; inset:0; z-index:90; display:none; align-items:flex-start; justify-content:center; padding:40px 16px; overflow:auto; background:rgba(20,30,45,0.35); backdrop-filter:blur(3px); }
+.modal-box{ background:var(--panel); border:1px solid var(--panel-border); border-radius:16px; padding:26px; width:660px; max-width:96vw; box-shadow:0 24px 60px rgba(15,23,42,0.25); animation:lockIn .3s ease; }
+.modal-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+.close-x{ cursor:pointer; color:var(--muted-2); font-size:18px; border:none; background:none; }
+.close-x:hover{ color:var(--gone-c); }
+.field-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+@media (max-width:520px){ .field-grid{ grid-template-columns:1fr; } }
+.group-label{ font-size:11.5px; font-weight:800; color:var(--gold-bright); text-transform:uppercase; letter-spacing:.05em; margin:16px 0 8px; display:flex; align-items:center; gap:8px; }
+.rate-hint{ font-size:11.5px; color:var(--muted); background:var(--panel-2); border:1px dashed var(--panel-border); border-radius:8px; padding:9px 12px; margin:-4px 0 12px; }
+.rate-hint b{ color:var(--gold-bright); }
+.empty-note{ text-align:center; padding:40px 10px; color:var(--muted-2); font-size:13px; }
+.note-strip{ font-size:11.5px; color:var(--muted-2); background:var(--panel-2); border:1px solid var(--panel-border); border-radius:9px; padding:10px 14px; margin-top:14px; line-height:1.6; }
+.toast{ position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:var(--gold); color:#fff; padding:11px 20px; border-radius:9px; font-size:12.5px; font-weight:700; box-shadow:0 10px 24px rgba(15,23,42,0.25); z-index:200; opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s ease; max-width:90vw; text-align:center; }
+.toast.show{ opacity:1; transform:translateX(-50%) translateY(-6px); }
+
+.sync-bar{ position:fixed; bottom:18px; right:18px; z-index:210; display:none; align-items:center; gap:9px; background:var(--panel); border:1px solid var(--panel-border); border-radius:999px; padding:8px 14px 8px 10px; box-shadow:0 10px 24px rgba(15,23,42,0.18); font-size:12px; font-weight:700; color:var(--muted); cursor:pointer; user-select:none; transition:transform .15s ease; }
+.sync-bar.visible{ display:flex; }
+.sync-bar:hover{ transform:translateY(-2px); }
+.sync-dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+.sync-dot.synced{ background:var(--active-c); box-shadow:0 0 0 3px rgba(22,104,65,0.15); }
+.sync-dot.syncing{ background:var(--hold-c); animation:syncPulse 1s infinite ease-in-out; }
+.sync-dot.error{ background:var(--gone-c); }
+@keyframes syncPulse{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+.sync-bar .sync-label{ white-space:nowrap; }
+.sync-bar .sync-refresh-icon{ font-size:13px; opacity:.7; }
+
+.exec-select-row{ display:flex; align-items:center; gap:12px; margin-bottom:18px; flex-wrap:wrap; }
+.exec-select-row select{ padding:10px 14px; border-radius:9px; border:1px solid var(--panel-border); background:var(--panel-2); font-size:13.5px; font-weight:700; color:var(--gold-bright); }
+.chart-card{ background:var(--panel); border:1px solid var(--panel-border); border-radius:14px; padding:20px; margin-bottom:20px; }
+.chart-card h3{ font-size:14px; margin-bottom:14px; }
+.chart-wrap{ position:relative; height:280px; }
+.chart-grid2{ display:grid; grid-template-columns:1.3fr 1fr; gap:18px; }
+@media (max-width:900px){ .chart-grid2{ grid-template-columns:1fr; } }
+.checkbox-row{ display:flex; align-items:center; gap:8px; margin:10px 0 4px; font-size:13px; color:var(--muted); }
+.checkbox-row input{ width:16px; height:16px; }
+.loading-note{ text-align:center; padding:60px 10px; color:var(--muted-2); font-size:13px; }
+</style>
+</head>
+<body>
+
+<!-- ================= ROLE SELECT ================= -->
+<div id="role-screen">
+  <div style="text-align:center;">
+    <div id="fb-warning" style="display:none; max-width:480px; margin:0 auto 22px; background:#fdecea; border:1px solid #f3b7ae; color:#8a2c22; border-radius:10px; padding:14px 16px; font-size:12.5px; line-height:1.6; text-align:left;">
+      ⚠️ <b>Firebase is not configured yet.</b> Owner/Employee login will not
+      work until you paste your real Firebase project config into this file
+      (search for <code>firebaseConfig</code> near the top of the script and
+      replace the placeholder values). See FIREBASE_SETUP.md for steps.
+    </div>
+    <div class="brand" style="justify-content:center; margin-bottom:26px;">
+      <div class="orbit-mark">R</div>
+      <div class="brand-text" style="text-align:left;">
+        <div class="t1">Records</div>
+        <div class="t2">Executive Accounts &amp; Revenue</div>
+      </div>
+    </div>
+    <div class="role-cards">
+      <div class="role-card" onclick="goToOwnerLogin()">
+        <div class="ric">🗝️</div>
+        <h3>Owner</h3>
+        <p>Full Records dashboard, all followups &amp; pipeline analytics, monthly target.</p>
+      </div>
+      <div class="role-card" onclick="goToEmployeeLogin()">
+        <div class="ric">👤</div>
+        <h3>Employee</h3>
+        <p>Log followups, mark leads as closed, and track your own pipeline.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= LOCK / LOGIN SCREENS ================= -->
+<div id="lock-screen" style="display:none;">
+  <div class="lock-box" id="lock-box"></div>
+</div>
+
+<!-- ================= WELCOME (shown right after an employee logs in) ================= -->
+<div id="welcome-screen" style="display:none;">
+  <div class="welcome-box">
+    <div class="welcome-icon">👋</div>
+    <div class="welcome-title">Welcome</div>
+    <div class="welcome-name" id="welcome-name-text"></div>
+    <div class="welcome-sub">Loading your dashboard…</div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="app">
+  <header>
+    <div class="brand">
+      <div class="orbit-mark">R</div>
+      <div class="brand-text">
+        <div class="t1" id="brand-title">Records</div>
+        <div class="t2" id="brand-sub">Executive Accounts &amp; Revenue</div>
+      </div>
+    </div>
+    <div class="header-right" id="header-right"></div>
+  </header>
+  <main id="main-content"><div class="loading-note">Loading…</div></main>
+</div>
+
+<div class="modal-overlay" id="modal-overlay"><div class="modal-box" id="modal-box"></div></div>
+<div class="toast" id="toast"></div>
+<div class="sync-bar" id="sync-bar" onclick="manualSync()" title="Tap to sync now">
+  <span class="sync-dot synced" id="sync-dot"></span>
+  <span class="sync-label" id="sync-label">Synced</span>
+  <span class="sync-refresh-icon">🔄</span>
+</div>
+<input type="file" id="import-file-input" accept=".xlsx,.xls" style="display:none;" onchange="handleImportFile(event)">
+
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const DURATIONS = ['1 Month','3 Month','6 Month','1 Year'];
+const STATUS_LIST = ['Closed (Won)','In Progress','On Hold','Lost'];
+const GST_TYPES = ['Without GST','With GST'];
+const CLOSURE_OPTIONS = ['This Week','This Month','Next Month','3 Months','6 Months','1 Year'];
+
+function dur(a,b,c,d){ return {'1 Month':a,'3 Month':b,'6 Month':c,'1 Year':d}; }
+
+const PLATFORM_CONFIG = {
+  'Amazon': { icon:'📦', mgmtTypes:{
+    'Ads Management': { tiers:{
+      'Normal':     {kind:'duration', prices:dur('-','12K','20K','35K')},
+      'Dedicated':  {kind:'duration', prices:dur('12K','25K','45K','80K')},
+      'Global':     {kind:'duration', prices:dur('$150','$400','$750','$1400')},
+      'Percentage': {kind:'manual'} } },
+    'Account Management': { tiers:{
+      'Normal':     {kind:'duration', prices:dur('7K','15K','28K','50K')},
+      'Dedicated':  {kind:'duration', prices:dur('15K','30K','55K','100K')},
+      'Global':     {kind:'duration', prices:dur('$200','$500','$900','$1700')},
+      'Percentage': {kind:'manual'} } },
+    'Catalogue / Listing': { tiers:{
+      'Normal':       {kind:'flat', price:'Rs.20/SKU (min 50 SKU)'},
+      'Rich Content': {kind:'flat', price:'Rs.30/SKU (min 50 SKU)'} } },
+  }},
+  'Flipkart': { icon:'📦', mgmtTypes:{
+    'Ads Management': { tiers:{
+      'Normal':     {kind:'duration', prices:dur('3.5K','10K','18K','32K')},
+      'Dedicated':  {kind:'duration', prices:dur('7K','15K','25K','45K')},
+      'Percentage': {kind:'manual'} } },
+    'Account Management': { tiers:{
+      'Normal':     {kind:'duration', prices:dur('5K','12K','20K','35K')},
+      'Dedicated':  {kind:'duration', prices:dur('10K','25K','40K','70K')},
+      'Percentage': {kind:'manual'} } },
+    'Listing': { tiers:{
+      'Normal':       {kind:'flat', price:'Rs.20/SKU (min 50 SKU)'},
+      'Rich Content': {kind:'flat', price:'Rs.30/SKU (min 50 SKU)'} } },
+  }},
+  'Blinkit': { icon:'🛒', mgmtTypes:{
+    'Onboarding': { tiers:{ 'Normal': {kind:'flat', price:'20K (one-time)'} } },
+    'Account Management': { tiers:{
+      'Dedicated':  {kind:'duration', prices:dur('-','25K','45K','80K')},
+      'Percentage': {kind:'manual'} } },
+  }},
+  'Meesho': { icon:'🧵', mgmtTypes:{
+    'Account Management': { tiers:{
+      'Normal':     {kind:'duration', prices:dur('-','12K','20K','35K')},
+      'Percentage': {kind:'manual'} } },
+  }},
+  'Nykaa': { icon:'💄', mgmtTypes:{
+    'Account Management': { tiers:{ 'Normal':{kind:'manual'}, 'Dedicated':{kind:'manual'}, 'Percentage':{kind:'manual'} } },
+    'Ads Management':      { tiers:{ 'Normal':{kind:'manual'}, 'Dedicated':{kind:'manual'}, 'Percentage':{kind:'manual'} } },
+  }},
+  'Myntra': { icon:'👗', mgmtTypes:{
+    'Account Management': { tiers:{ 'Normal':{kind:'manual'}, 'Dedicated':{kind:'manual'}, 'Percentage':{kind:'manual'} } },
+    'Ads Management':      { tiers:{ 'Normal':{kind:'manual'}, 'Dedicated':{kind:'manual'}, 'Percentage':{kind:'manual'} } },
+  }},
+  'Digital Marketing': { icon:'📈', mgmtTypes:{
+    'Website Development':     { tiers:{ 'Basic': {kind:'flat', price:'Rs.35,000 (one-time)'} } },
+    'Social Media Marketing':  { tiers:{ 'Normal': {kind:'duration', prices:dur('-','30K','55K','100K')} } },
+    'SEO':                     { tiers:{ 'Normal': {kind:'duration', prices:dur('-','40K','70K','130K')} } },
+    'Performance Marketing':   { tiers:{ 'Normal': {kind:'duration', prices:dur('-','30K','55K','100K')} } },
+  }},
+  'Creative Services': { icon:'🎨', mgmtTypes:{
+    'A+ Content':   { tiers:{ 'Normal': {kind:'flat', price:'Rs.500/SKU'} } },
+    'Brand Story':  { tiers:{ 'Normal': {kind:'flat', price:'Rs.3000/SKU'} } },
+    'Brand Store':  { tiers:{ 'Normal': {kind:'flat', price:'Rs.3000 mini, rest as per requirement'} } },
+    'Premium A+':   { tiers:{ 'Normal': {kind:'flat', price:'Rs.700/SKU, rest as per requirement'} } },
+  }},
+};
+const PLATFORMS = Object.keys(PLATFORM_CONFIG);
+const SERVICE_TYPES = PLATFORMS; // used as the "Service Type" dropdown for followups
+// Any platform other than Amazon / Flipkart is treated as an outsourced service —
+// the form asks for an extra "Outsourcing Amount" whenever one of these is picked.
+function needsOutsourcing(platform){ return !!platform && platform!=='Amazon' && platform!=='Flipkart'; }
+
+/* ============================================================
+   STORAGE — shared key/value store, synced for owner + all
+   employees via Firebase Firestore, LIVE (real-time listeners,
+   no polling / no manual refresh needed).
+   ------------------------------------------------------------
+   BEFORE HOSTING THIS FILE: paste your Firebase project config
+   below (see FIREBASE_SETUP.md, Step 4).
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyD6BJcyef2meVoFX7URu4GWPc_uCz7TpSo",
+  authDomain: "personalkpi-49955.firebaseapp.com",
+  projectId: "personalkpi-49955",
+  storageBucket: "personalkpi-49955.firebasestorage.app",
+  messagingSenderId: "467819477060",
+  appId: "1:467819477060:web:236462a092e8babd0d2411"
+};
+const FIREBASE_CONFIGURED = firebaseConfig.apiKey !== "YOUR_API_KEY" && !!firebaseConfig.apiKey;
+const FB_COLLECTION = 'dashboard-data';
+let db = null, auth = null, fbReady = Promise.resolve();
+if(FIREBASE_CONFIGURED){
+  try{
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    auth = firebase.auth();
+    // Anonymous auth so Firestore security rules can require "signed in"
+    // without asking employees for a separate Firebase login.
+    fbReady = auth.signInAnonymously().catch(e=>console.error('Firebase auth error', e));
+  }catch(e){
+    console.error('Firebase init error', e);
+  }
+} else {
+  console.warn('Firebase is not configured yet — paste your firebaseConfig values (see FIREBASE_SETUP.md).');
+}
+// Never let a stuck network call hang the UI forever — give up after 8s.
+function withTimeout(promise, ms=8000){
+  return Promise.race([
+    promise,
+    new Promise((_,reject)=>setTimeout(()=>reject(new Error('timeout')), ms))
+  ]);
+}
+
+const K_OWNER_PASS = 'owner-password';
+const K_EMPLOYEES   = 'employees-v1';
+const K_ENTRIES      = 'records-entries-v1';
+const K_EXECUTIVES   = 'records-executives-v1';
+const K_FOLLOWUPS    = 'followups-v1';
+const K_TARGET        = 'monthly-target-v1';
+
+async function kvGet(key){
+  if(!FIREBASE_CONFIGURED) return null;
+  try{
+    await withTimeout(fbReady);
+    const doc = await withTimeout(db.collection(FB_COLLECTION).doc(key).get());
+    if(!doc.exists) return null;
+    const data = doc.data();
+    return (data && data.value!==undefined) ? JSON.parse(data.value) : null;
+  }catch(e){ console.error('storage get error', e); return null; }
+}
+async function kvSet(key, val){
+  if(!FIREBASE_CONFIGURED){ setSyncStatus('error'); return false; }
+  setSyncStatus('syncing');
+  try{
+    await withTimeout(fbReady);
+    await withTimeout(db.collection(FB_COLLECTION).doc(key).set({
+      value: JSON.stringify(val),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }));
+    PENDING_WRITES.delete(key);
+    setSyncStatus(PENDING_WRITES.size ? 'error' : 'synced');
+    return true;
+  }catch(e){
+    console.error('storage set error', e);
+    PENDING_WRITES.set(key, val);
+    setSyncStatus('error');
+    return false;
+  }
+}
+
+/* ============================================================
+   SYNC STATUS BAR — visible on every screen (owner + employee).
+   Every save (any entry, followup, target, employee) pushes to
+   Firebase immediately. If a push fails (e.g. no internet), it's
+   queued in PENDING_WRITES and retried automatically + on tap /
+   on reconnect, so nothing entered by an employee gets lost.
+   ============================================================ */
+const PENDING_WRITES = new Map(); // key -> val, for anything that failed to push
+let syncBusyTimer = null;
+
+function setSyncStatus(state){
+  const bar = document.getElementById('sync-bar');
+  const dot = document.getElementById('sync-dot');
+  const label = document.getElementById('sync-label');
+  if(!bar) return;
+  bar.classList.add('visible');
+  dot.classList.remove('synced','syncing','error');
+  if(state==='syncing'){
+    dot.classList.add('syncing'); label.textContent = 'Syncing…';
+  } else if(state==='error'){
+    dot.classList.add('error');
+    label.textContent = PENDING_WRITES.size ? `Sync failed (${PENDING_WRITES.size} pending) — tap to retry` : 'Sync failed — tap to retry';
+  } else {
+    dot.classList.add('synced'); label.textContent = 'Synced';
+    if(syncBusyTimer) clearTimeout(syncBusyTimer);
+    syncBusyTimer = setTimeout(()=>{ if(label) label.textContent='Synced'; }, 4000);
+  }
+}
+
+/* Manual sync button — click it anytime to (a) push any entries
+   that failed to save earlier, and (b) pull the latest data from
+   the server right now, no waiting for the live listener. */
+async function manualSync(){
+  setSyncStatus('syncing');
+  showToast('Syncing…');
+  // 1) retry any failed writes first
+  if(PENDING_WRITES.size){
+    for(const [key, val] of Array.from(PENDING_WRITES.entries())){
+      await kvSet(key, val);
+    }
+  }
+  // 2) pull the freshest data and re-render
+  const modalOpen = document.getElementById('modal-overlay')?.style.display === 'flex';
+  await hydrateAll();
+  if(!modalOpen) render();
+  if(PENDING_WRITES.size===0){
+    setSyncStatus('synced');
+    showToast('✅ All data synced to server');
+  } else {
+    setSyncStatus('error');
+    showToast('⚠️ Some entries still pending — check your internet');
+  }
+}
+
+// Auto-retry pending writes every 10s (e.g. after internet drops
+// and comes back), so an employee never has to think about it.
+setInterval(()=>{
+  if(PENDING_WRITES.size) manualSync();
+}, 10000);
+
+// If the browser regains connectivity, retry immediately.
+window.addEventListener('online', ()=>{ if(PENDING_WRITES.size) manualSync(); });
+
+/* Live sync: Firestore real-time listeners. The moment an employee
+   (or the owner) saves data anywhere, every open dashboard re-pulls
+   and re-renders automatically — no delay, no manual refresh.
+   Skipped while a modal (add/edit form) is open, so it never
+   overwrites something someone is actively typing. */
+let LIVE_UNSUBS = [];
+function startLiveSync(){
+  stopLiveSync();
+  if(!FIREBASE_CONFIGURED) return;
+  const keys = [K_ENTRIES, K_EXECUTIVES, K_EMPLOYEES, K_FOLLOWUPS, K_TARGET];
+  keys.forEach(key=>{
+    const unsub = db.collection(FB_COLLECTION).doc(key).onSnapshot(async ()=>{
+      if(!ROLE) return;
+      const modalOpen = document.getElementById('modal-overlay')?.style.display === 'flex';
+      await hydrateAll();
+      if(!modalOpen) render();
+    }, err=>console.error('live sync error', err));
+    LIVE_UNSUBS.push(unsub);
+  });
+}
+function stopLiveSync(){
+  LIVE_UNSUBS.forEach(u=>u());
+  LIVE_UNSUBS = [];
+}
+function simpleHash(s){ try{ return btoa(unescape(encodeURIComponent(String(s)))); }catch(e){ return String(s); } }
+function uid(){ return 'x'+Math.random().toString(36).slice(2)+Date.now().toString(36); }
+function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtRev(n){ n=Number(n)||0; return '₹'+n.toLocaleString('en-IN'); }
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400); }
+function closeModal(){ document.getElementById('modal-overlay').style.display='none'; }
+document.getElementById('modal-overlay').addEventListener('click', e=>{ if(e.target.id==='modal-overlay') closeModal(); });
+
+/* ============================================================
+   IN-MEMORY STATE (hydrated from shared storage on login)
+   ============================================================ */
+let ENTRIES = [];       // Records entries (owner-only view)
+let EXECUTIVES = [];    // executive names for Records
+let EMPLOYEES = [];     // [{name, pass}]
+let FOLLOWUPS = [];     // followup leads
+let TARGET = { amount:0, month:'', weeklyAmount:0, week:'' };
+
+let ROLE = null;        // 'owner' | employee name
+let currentView = 'home';
+
+async function hydrateAll(){
+  const [entries, execs, emps, fus, tgt] = await Promise.all([
+    kvGet(K_ENTRIES), kvGet(K_EXECUTIVES), kvGet(K_EMPLOYEES), kvGet(K_FOLLOWUPS), kvGet(K_TARGET)
+  ]);
+  ENTRIES = entries || [];
+  EXECUTIVES = execs || [];
+  EMPLOYEES = emps || [];
+  FOLLOWUPS = fus || [];
+  TARGET = Object.assign({ amount:0, month:'', weeklyAmount:0, week:'' }, tgt||{});
+}
+async function saveEntries(){ return await kvSet(K_ENTRIES, ENTRIES); }
+async function saveExecutives(){ return await kvSet(K_EXECUTIVES, EXECUTIVES); }
+async function saveEmployees(){ return await kvSet(K_EMPLOYEES, EMPLOYEES); }
+async function saveFollowups(){ return await kvSet(K_FOLLOWUPS, FOLLOWUPS); }
+async function saveTarget(){ return await kvSet(K_TARGET, TARGET); }
+
+/* ============================================================
+   BOOT / SESSION
+   ============================================================ */
+function boot(){
+  const savedRole = sessionStorage.getItem('dashRole');
+  if(!FIREBASE_CONFIGURED){ document.getElementById('fb-warning').style.display='block'; }
+  if(savedRole==='owner'){ ROLE='owner'; startApp(); return; }
+  if(savedRole && savedRole.startsWith('emp:')){ ROLE=savedRole.slice(4); startApp(); return; }
+  document.getElementById('role-screen').style.display='flex';
+}
+function doLogout(){
+  stopLiveSync();
+  document.getElementById('sync-bar')?.classList.remove('visible');
+  sessionStorage.removeItem('dashRole');
+  ROLE=null;
+  document.getElementById('app').style.display='none';
+  document.getElementById('lock-screen').style.display='none';
+  document.getElementById('role-screen').style.display='flex';
+}
+
+/* ---------------- Owner login ---------------- */
+async function goToOwnerLogin(){
+  document.getElementById('role-screen').style.display='none';
+  const existing = await kvGet(K_OWNER_PASS);
+  const lockScreen = document.getElementById('lock-screen');
+  lockScreen.style.display='flex';
+  if(!existing){
+    document.getElementById('lock-box').innerHTML = `
+      <div class="lock-icon">🗝️</div>
+      <h2>Set the Owner Password</h2>
+      <p class="sub">This is the first time — choose a password. You'll need it every time you open this dashboard as Owner.</p>
+      <div class="field"><label>New Password</label><input id="owner-new-pass" type="password" placeholder="Choose a password"></div>
+      <div class="field"><label>Confirm Password</label><input id="owner-new-pass2" type="password" placeholder="Re-enter password"></div>
+      <button class="lock-btn" onclick="setOwnerPassword()">Set Password &amp; Continue</button>
+      <div class="lock-err" id="owner-err"></div>
+      <div class="back-mini" onclick="backToRoles()">← Back</div>`;
+  } else {
+    document.getElementById('lock-box').innerHTML = `
+      <div class="lock-icon">🗝️</div>
+      <h2>Owner Login</h2>
+      <p class="sub">Enter the Owner password to open the full Records dashboard.</p>
+      <div class="field"><label>Password</label><input id="owner-pass" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')ownerLogin()"></div>
+      <button class="lock-btn" onclick="ownerLogin()">Unlock</button>
+      <div class="lock-err" id="owner-err"></div>
+      <div class="back-mini" onclick="backToRoles()">← Back</div>`;
+  }
+}
+async function setOwnerPassword(){
+  const p1 = document.getElementById('owner-new-pass').value;
+  const p2 = document.getElementById('owner-new-pass2').value;
+  const err = document.getElementById('owner-err');
+  if(!p1 || p1.length<4){ err.textContent='Password should be at least 4 characters.'; return; }
+  if(p1!==p2){ err.textContent='Passwords do not match.'; return; }
+  await kvSet(K_OWNER_PASS, simpleHash(p1));
+  sessionStorage.setItem('dashRole','owner'); ROLE='owner';
+  startApp();
+}
+async function ownerLogin(){
+  const p = document.getElementById('owner-pass').value;
+  const err = document.getElementById('owner-err');
+  const saved = await kvGet(K_OWNER_PASS);
+  if(simpleHash(p)!==saved){ err.textContent='Incorrect password.'; return; }
+  sessionStorage.setItem('dashRole','owner'); ROLE='owner';
+  startApp();
+}
+function backToRoles(){
+  document.getElementById('lock-screen').style.display='none';
+  document.getElementById('role-screen').style.display='flex';
+}
+
+/* ---------------- Welcome animation (employee login) ---------------- */
+function showWelcomeThenStart(name){
+  document.getElementById('role-screen').style.display='none';
+  document.getElementById('lock-screen').style.display='none';
+  const scr = document.getElementById('welcome-screen');
+  document.getElementById('welcome-name-text').textContent = name;
+  scr.style.display='flex';
+  setTimeout(()=>{
+    scr.style.display='none';
+    startApp();
+  }, 1600);
+}
+
+/* ---------------- Employee login ---------------- */
+async function goToEmployeeLogin(){
+  document.getElementById('role-screen').style.display='none';
+  const emps = await kvGet(K_EMPLOYEES) || [];
+  EMPLOYEES = emps;
+  const lockScreen = document.getElementById('lock-screen');
+  lockScreen.style.display='flex';
+  const options = emps.map(e=>`<option value="${escapeHtml(e.name)}">${escapeHtml(e.name)}</option>`).join('');
+  document.getElementById('lock-box').innerHTML = `
+    <div class="lock-icon">👤</div>
+    <h2>Employee Login</h2>
+    <p class="sub">Pick your name, or add yourself as a new employee below. First-time login sets your password.</p>
+    <div class="field">
+      <label>Your Name</label>
+      <select id="emp-name-select" onchange="onEmpNameChange()">
+        <option value="">— Select your name —</option>
+        ${options}
+        <option value="__new__">+ I'm new — add my name</option>
+      </select>
+    </div>
+    <div class="field" id="emp-new-wrap" style="display:none;">
+      <label>New Employee Name</label><input id="emp-new-name" type="text" placeholder="e.g. Rahul">
+    </div>
+    <div class="field"><label>Password</label><input id="emp-pass" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')employeeLogin()"></div>
+    <button class="lock-btn" onclick="employeeLogin()">Continue</button>
+    <div class="lock-err" id="emp-err"></div>
+    <div class="back-mini" onclick="backToRoles()">← Back</div>`;
+}
+function onEmpNameChange(){
+  const v = document.getElementById('emp-name-select').value;
+  document.getElementById('emp-new-wrap').style.display = (v==='__new__') ? 'block' : 'none';
+}
+async function employeeLogin(){
+  const sel = document.getElementById('emp-name-select').value;
+  const err = document.getElementById('emp-err');
+  let name = sel;
+  if(sel==='__new__'){
+    name = document.getElementById('emp-new-name').value.trim();
+    if(!name){ err.textContent='Please enter your name.'; return; }
+  }
+  if(!name){ err.textContent='Please select or enter your name.'; return; }
+  const pass = document.getElementById('emp-pass').value;
+  if(!pass || pass.length<4){ err.textContent='Password should be at least 4 characters.'; return; }
+
+  const emps = await kvGet(K_EMPLOYEES) || [];
+  const existing = emps.find(e=>e.name.toLowerCase()===name.toLowerCase());
+  if(existing){
+    if(simpleHash(pass)!==existing.pass){ err.textContent='Incorrect password for '+name+'.'; return; }
+  } else {
+    emps.push({ name, pass: simpleHash(pass) });
+    await kvSet(K_EMPLOYEES, emps);
+    EMPLOYEES = emps;
+    const execs = await kvGet(K_EXECUTIVES) || [];
+    if(!execs.includes(name)){ execs.push(name); await kvSet(K_EXECUTIVES, execs); }
+  }
+  sessionStorage.setItem('dashRole','emp:'+name); ROLE = name;
+  showWelcomeThenStart(name);
+}
+
+async function startApp(){
+  document.getElementById('role-screen').style.display='none';
+  document.getElementById('lock-screen').style.display='none';
+  document.getElementById('app').style.display='block';
+  await hydrateAll();
+  buildHeader();
+  currentView = (ROLE==='owner') ? 'home' : 'followups';
+  render();
+  startLiveSync();
+  setSyncStatus('synced');
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+function buildHeader(){
+  const title = document.getElementById('brand-title');
+  const sub = document.getElementById('brand-sub');
+  const right = document.getElementById('header-right');
+  if(ROLE==='owner'){
+    title.textContent = 'Records';
+    sub.textContent = 'Owner — Executive Accounts & Revenue';
+    right.innerHTML = `
+      <button class="btn ghost" id="nav-home" onclick="setView('home')">🏠 Entries</button>
+      <button class="btn ghost" id="nav-analytics" onclick="setView('analytics')">📊 Analytics</button>
+      <button class="btn ghost" id="nav-pipeline" onclick="setView('pipeline')">🧭 Pipelines / Followups</button>
+      <button class="btn ghost" onclick="openTargetModal()">🎯 Set Target</button>
+      <button class="btn solid" onclick="exportToExcel()">⬇ Export to Excel</button>
+      <button class="btn ghost" onclick="doLogout()">🔒 Logout</button>`;
+  } else {
+    title.textContent = 'Records';
+    sub.textContent = 'Employee — '+ROLE;
+    right.innerHTML = `
+      <button class="btn ghost" onclick="doLogout()">🔒 Logout</button>`;
+  }
+}
+
+function setView(v){ currentView=v; render(); }
+
+function render(){
+  const main = document.getElementById('main-content');
+  document.querySelectorAll('#header-right .btn').forEach(b=>b.classList.remove('active'));
+  if(currentView==='home') document.getElementById('nav-home')?.classList.add('active');
+  if(currentView==='analytics') document.getElementById('nav-analytics')?.classList.add('active');
+  if(currentView==='pipeline') document.getElementById('nav-pipeline')?.classList.add('active');
+
+  if(ROLE!=='owner'){ main.innerHTML = followupsHTML(); return; }
+  if(currentView==='analytics'){ main.innerHTML = analyticsHTML(); setTimeout(drawAnalyticsCharts,0); return; }
+  if(currentView==='pipeline'){ main.innerHTML = pipelineHTML(); setTimeout(drawPipelineChart,0); return; }
+  main.innerHTML = homeHTML();
+}
+
+const SEG_COLORS = ['#2f5d94','#166841','#94580c','#ab2b23','#6b7a8c','#1f3a5f','#2f8f6c','#b4842a','#7a4fb5','#2f8fae'];
+function employeeRevenueMap(){
+  const map = {};
+  closedOf(ENTRIES).forEach(e=>{ map[e.executive] = (map[e.executive]||0) + (Number(e.revenue)||0); });
+  EXECUTIVES.forEach(name=>{ if(!(name in map)) map[name]=0; });
+  (EMPLOYEES||[]).forEach(emp=>{ if(!(emp.name in map)) map[emp.name]=0; });
+  return map;
+}
+function targetStripHTML(){
+  const closedRevenue = sumRev(closedOf(ENTRIES));
+  const pct = TARGET.amount>0 ? Math.min(100, Math.round(closedRevenue/TARGET.amount*100)) : 0;
+  const wPct = TARGET.weeklyAmount>0 ? Math.min(100, Math.round(closedRevenue/TARGET.weeklyAmount*100)) : 0;
+
+  // Monthly bar: split into one segment per employee, proportional to their
+  // closed revenue against the monthly target — hover any segment (or its
+  // legend chip) to see that employee's name & revenue. Nothing else.
+  const revMap = employeeRevenueMap();
+  const names = Object.keys(revMap);
+  let segsHtml = '';
+  let legendHtml = '';
+  if(TARGET.amount>0 && names.length){
+    names.forEach((name,i)=>{
+      const rev = revMap[name];
+      const color = SEG_COLORS[i%SEG_COLORS.length];
+      const segPct = Math.max(0, Math.min(100, (rev/TARGET.amount)*100));
+      if(segPct>0){
+        segsHtml += `<div class="target-seg" title="${escapeHtml(name)}: ${fmtRev(rev)}" style="width:${segPct}%; background:${color};"></div>`;
+      }
+      legendHtml += `<span class="target-legend-chip" title="${escapeHtml(name)}: ${fmtRev(rev)}"><i style="background:${color};"></i>${escapeHtml(name)}</span>`;
+    });
+  }
+
+  return `
+    <div class="target-strip">
+      <div>
+        <div class="tlabel">Monthly Target${TARGET.month?(' — '+escapeHtml(TARGET.month)):''}</div>
+        <div class="tval">${TARGET.amount ? fmtRev(TARGET.amount) : 'Not set yet'}</div>
+      </div>
+      <div class="target-bar target-bar-lg">${segsHtml || `<div class="target-bar-fill" style="width:${pct}%;"></div>`}</div>
+      <div class="target-pct">${TARGET.amount ? pct+'% achieved · '+fmtRev(closedRevenue)+' closed' : "Owner hasn't set a target yet"}</div>
+    </div>
+    ${names.length ? `<div class="target-legend-row">${legendHtml}</div>` : ''}
+    <div class="target-strip target-strip-sm">
+      <div>
+        <div class="tlabel">Weekly Target${TARGET.week?(' — '+escapeHtml(TARGET.week)):''}</div>
+        <div class="tval tval-sm">${TARGET.weeklyAmount ? fmtRev(TARGET.weeklyAmount) : 'Not set yet'}</div>
+      </div>
+      <div class="target-bar target-bar-sm"><div class="target-bar-fill" style="width:${wPct}%;"></div></div>
+      <div class="target-pct">${TARGET.weeklyAmount ? wPct+'% achieved' : "Owner hasn't set a weekly target yet"}</div>
+    </div>`;
+}
+
+function openTargetModal(){
+  document.getElementById('modal-box').innerHTML = `
+    <div class="modal-head"><h3>Set Targets</h3><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="group-label">📅 Monthly Target</div>
+    <div class="field"><label>Target Revenue for the Month (₹)</label><input id="tg-amount" type="number" min="0" value="${TARGET.amount||''}" placeholder="e.g. 500000"></div>
+    <div class="field"><label>Month Label</label><input id="tg-month" type="text" value="${escapeHtml(TARGET.month||'')}" placeholder="e.g. August 2026"></div>
+    <div class="group-label">🗓️ Weekly Target</div>
+    <div class="field"><label>Target Revenue for the Week (₹)</label><input id="tg-week-amount" type="number" min="0" value="${TARGET.weeklyAmount||''}" placeholder="e.g. 125000"></div>
+    <div class="field"><label>Week Label</label><input id="tg-week" type="text" value="${escapeHtml(TARGET.week||'')}" placeholder="e.g. Week of 21 Jul"></div>
+    <button class="btn-solid" onclick="submitTarget()">Save Targets</button>`;
+  document.getElementById('modal-overlay').style.display='flex';
+}
+async function submitTarget(){
+  const amount = parseFloat(document.getElementById('tg-amount').value)||0;
+  const month = document.getElementById('tg-month').value.trim();
+  const weeklyAmount = parseFloat(document.getElementById('tg-week-amount').value)||0;
+  const week = document.getElementById('tg-week').value.trim();
+  TARGET = { amount, month, weeklyAmount, week };
+  const ok = await saveTarget();
+  closeModal();
+  showToast(ok ? '✅ Targets updated & synced' : '⚠️ Saved locally — will sync when online');
+  render();
+}
+
+/* ============================================================
+   HELPERS on entries
+   ============================================================ */
+function closedOf(list){ return list.filter(e=>e.status==='Closed (Won)'); }
+function sumRev(list){ return list.reduce((s,e)=>s+(Number(e.revenue)||0),0); }
+function totalOf(e){ return (Number(e.revenue)||0) + (e.gstType==='With GST' ? (Number(e.gstAmount)||0) : 0); }
+function statusPillClass(s){ return s==='Closed (Won)'?'won':s==='In Progress'?'prog':s==='On Hold'?'hold':'lost'; }
+function bySchemaTiers(platform, mgmt){ return (PLATFORM_CONFIG[platform]&&PLATFORM_CONFIG[platform].mgmtTypes[mgmt]&&PLATFORM_CONFIG[platform].mgmtTypes[mgmt].tiers)||{}; }
+function usesDuration(platform, mgmt, tier){ const t=bySchemaTiers(platform,mgmt)[tier]; return t&&t.kind==='duration'; }
+function rateHint(platform, mgmt, tier, duration){
+  const t = bySchemaTiers(platform,mgmt)[tier];
+  if(!t) return '';
+  if(t.kind==='flat') return `Rate card: <b>${escapeHtml(t.price)}</b>`;
+  if(t.kind==='manual') return `This tier is <b>Percentage / Manual</b> — enter the agreed amount directly.`;
+  if(t.kind==='duration' && duration) return `Rate card (${escapeHtml(duration)}): <b>${escapeHtml(t.prices[duration]||'-')}</b>`;
+  return '';
+}
+
+/* ============================================================
+   HOME (Records entries) — Owner only
+   ============================================================ */
+let filterExec='All', filterPlatform='All', filterStatus='All';
+let SELECTED_ENTRY_IDS = new Set(); // bulk-select for Delete Selected (owner Entries table)
+
+function homeHTML(){
+  const execOptions = ['All',...EXECUTIVES].map(e=>`<option ${filterExec===e?'selected':''}>${escapeHtml(e)}</option>`).join('');
+  const platOptions = ['All',...PLATFORMS].map(p=>`<option ${filterPlatform===p?'selected':''}>${escapeHtml(p)}</option>`).join('');
+  const statOptions = ['All',...STATUS_LIST].map(s=>`<option ${filterStatus===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+
+  let list = ENTRIES.slice().sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+  if(filterExec!=='All') list = list.filter(e=>e.executive===filterExec);
+  if(filterPlatform!=='All') list = list.filter(e=>e.platform===filterPlatform);
+  if(filterStatus!=='All') list = list.filter(e=>e.status===filterStatus);
+
+  const closed = closedOf(list);
+  const closedWithGst = closed.filter(e=>e.gstType==='With GST');
+  const closedNoGst = closed.filter(e=>e.gstType!=='With GST');
+  const revenueClosed = sumRev(closed);
+  const revenueWithGst = sumRev(closedWithGst);
+  const revenueNoGst = sumRev(closedNoGst);
+
+  const rows = list.map(e=>`
+    <tr>
+      <td><input type="checkbox" class="entry-select-cb" data-id="${e.id}" ${SELECTED_ENTRY_IDS.has(e.id)?'checked':''} onchange="toggleEntrySelect('${e.id}', this.checked)"></td>
+      <td>${escapeHtml(e.date)}</td>
+      <td class="name-cell">${escapeHtml(e.executive)}</td>
+      <td>${escapeHtml(e.platform)}</td>
+      <td>${escapeHtml(e.mgmt)}</td>
+      <td>${escapeHtml(e.tier)}</td>
+      <td>${escapeHtml(e.duration||'—')}</td>
+      <td>${escapeHtml(e.brand)}</td>
+      <td>${fmtRev(e.revenue)}</td>
+      <td>${needsOutsourcing(e.platform) ? fmtRev(e.outsourcingAmount||0) : '—'}</td>
+      <td>${e.gstType==='With GST' ? fmtRev(e.gstAmount) : '—'}</td>
+      <td><b>${fmtRev(totalOf(e))}</b></td>
+      <td><span class="pill ${statusPillClass(e.status)}">${escapeHtml(e.status)}</span></td>
+      <td>
+        <div class="row-actions">
+          <button class="icon-btn" onclick="openEntryModal('${e.id}')">✎ Edit</button>
+          <button class="icon-btn del" onclick="deleteEntry('${e.id}')">🗑</button>
+        </div>
+      </td>
+    </tr>`).join('');
+
+  const allVisibleIds = list.map(e=>e.id);
+  const allVisibleSelected = allVisibleIds.length>0 && allVisibleIds.every(id=>SELECTED_ENTRY_IDS.has(id));
+
+  return `
+    <div class="section-title">Onboarding Entries</div>
+    <div class="section-sub">Every closed &amp; in-progress account, executive-wise. Only visible to the Owner.</div>
+    ${targetStripHTML()}
+    <div class="grid5">
+      <div class="stat-card"><div class="val">${closed.length}</div><div class="lbl">Entries Shown</div></div>
+      <div class="stat-card"><div class="val c-active">${closed.length}</div><div class="lbl">Closed (Won)</div></div>
+      <div class="stat-card"><div class="val">${fmtRev(revenueClosed)}</div><div class="lbl">Closed Revenue (Total)</div></div>
+      <div class="stat-card"><div class="val">${fmtRev(revenueWithGst)}</div><div class="lbl">Closed — With GST</div></div>
+      <div class="stat-card"><div class="val">${fmtRev(revenueNoGst)}</div><div class="lbl">Closed — Without GST</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="filter-row" style="margin-bottom:0;">
+          <select onchange="filterExec=this.value; render()">${execOptions}</select>
+          <select onchange="filterPlatform=this.value; render()">${platOptions}</select>
+          <select onchange="filterStatus=this.value; render()">${statOptions}</select>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn ghost" onclick="triggerImport()">⬆ Import Excel</button>
+          <button class="btn solid" onclick="openEntryModal()">+ Add Entry</button>
+        </div>
+      </div>
+      <div id="bulk-delete-bar" style="display:${SELECTED_ENTRY_IDS.size?'flex':'none'}; align-items:center; gap:10px; background:rgba(171,43,35,0.08); border:1px solid rgba(171,43,35,0.30); border-radius:10px; padding:10px 14px; margin-bottom:12px; flex-wrap:wrap;">
+        <span id="bulk-delete-count" style="font-size:12.5px; font-weight:700; color:var(--gone-c);">${SELECTED_ENTRY_IDS.size} selected</span>
+        <button class="btn danger small" onclick="bulkDeleteEntries()">🗑 Delete Selected</button>
+        <button class="btn ghost small" onclick="clearEntrySelection()">Clear Selection</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr>
+            <th><input type="checkbox" id="select-all-entries" ${allVisibleSelected?'checked':''} onchange="toggleSelectAllVisible(this.checked)"></th>
+            <th>Date</th><th>Executive</th><th>Platform</th><th>Type</th><th>Tier</th><th>Duration</th>
+            <th>Brand</th><th>Actual Amt</th><th>Outsourcing Amt</th><th>GST</th><th>Total</th><th>Status</th><th>Actions</th>
+          </tr></thead>
+          <tbody>${rows || '<tr><td colspan="14" class="empty-note">No entries yet — click “+ Add Entry”, or wait for an employee to convert a followup.</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div class="note-strip">Data is synced across Owner and every Employee automatically. Use <b>Export to Excel</b> any time for a permanent copy.</div>
+    </div>`;
+}
+
+/* ---------------- ADD / EDIT ENTRY MODAL (also used by employee's convert-followup flow) ---------------- */
+function openEntryModal(id, opts){
+  opts = opts || {};
+  const e = id ? ENTRIES.find(x=>x.id===id) : null;
+  const presetExec = opts.presetExec || (e?e.executive:'');
+  const execList = EXECUTIVES.length ? EXECUTIVES : (ROLE==='owner'?[]:[ROLE]);
+  const execOptions = execList.map(x=>`<option ${presetExec===x?'selected':''}>${escapeHtml(x)}</option>`).join('');
+  const platOptions = PLATFORMS.map(p=>`<option ${(e?e.platform:opts.presetPlatform)===p?'selected':''}>${escapeHtml(p)}</option>`).join('');
+  const today = new Date().toISOString().slice(0,10);
+  const lockExec = !!opts.lockExec;
+
+  const html = `
+    <div class="modal-head"><h3>${opts.title || (e?'Edit Entry':'Add New Entry')}</h3><button class="close-x" onclick="closeModal()">✕</button></div>
+    ${opts.followupId ? `<div class="note-strip">Converting followup for <b>${escapeHtml(opts.presetBrand||'')}</b> — this will be added straight into Records.</div>` : ''}
+    <div class="field">
+      <label>Executive</label>
+      ${lockExec
+        ? `<input type="text" value="${escapeHtml(presetExec)}" disabled><input type="hidden" id="en-exec-hidden" value="${escapeHtml(presetExec)}">`
+        : `<select id="en-exec" onchange="if(this.value==='__new__'){document.getElementById('en-new-wrap').style.display='block';}else{document.getElementById('en-new-wrap').style.display='none';}">
+            ${execOptions}<option value="__new__">+ Add new executive…</option>
+          </select>`}
+    </div>
+    <div class="field" id="en-new-wrap" style="display:none;">
+      <label>New executive name</label><input id="en-new-name" type="text" placeholder="e.g. Rahul">
+    </div>
+    <div class="field-grid">
+      <div class="field"><label>Platform</label>
+        <select id="en-platform" onchange="onPlatformChange()">${platOptions}</select>
+      </div>
+      <div class="field"><label>Service Type</label>
+        <select id="en-mgmt" onchange="onMgmtChange()"></select>
+      </div>
+    </div>
+    <div class="field-grid">
+      <div class="field"><label>Tier (Dedicated / Normal / Percentage)</label>
+        <select id="en-tier" onchange="onTierChange()"></select>
+      </div>
+      <div class="field" id="en-duration-wrap">
+        <label>Service Range (Duration)</label>
+        <select id="en-duration" onchange="onDurationChange()"></select>
+      </div>
+    </div>
+    <div class="rate-hint" id="en-rate-hint"></div>
+    <div class="field-grid">
+      <div class="field"><label>Brand Name</label><input id="en-brand" type="text" placeholder="e.g. Sample Brand Co." value="${escapeHtml(e?e.brand:(opts.presetBrand||''))}"></div>
+      <div class="field"><label>Actual Amount, before GST (₹)</label><input id="en-revenue" type="number" min="0" placeholder="e.g. 25000" value="${e?e.revenue:(opts.presetRevenue||'')}" oninput="updateTotalDisplay()"></div>
+    </div>
+    <div class="field" id="en-outsourcing-wrap" style="display:none;">
+      <label>Outsourcing Amount (₹)</label><input id="en-outsourcing" type="number" min="0" placeholder="e.g. 5000" value="${e?(e.outsourcingAmount||''):(opts.presetOutsourcing||'')}">
+    </div>
+    <div class="field-grid">
+      <div class="field"><label>GST</label>
+        <select id="en-gst-type" onchange="onGstTypeChange()">${GST_TYPES.map(g=>`<option ${e&&e.gstType===g?'selected':''}>${g}</option>`).join('')}</select>
+      </div>
+      <div class="field" id="en-gst-amount-wrap" style="display:none;">
+        <label>GST Amount (₹)</label><input id="en-gst-amount" type="number" min="0" placeholder="e.g. 4500" value="${e&&e.gstAmount?e.gstAmount:''}" oninput="updateTotalDisplay()">
+      </div>
+    </div>
+    <div class="rate-hint" id="en-total-display" style="font-size:13px;"></div>
+    <div class="field-grid">
+      <div class="field"><label>Status</label>
+        <select id="en-status">${STATUS_LIST.map(s=>`<option ${(e?e.status:'Closed (Won)')===s?'selected':''}>${s}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>Date</label><input id="en-date" type="date" value="${e?e.date:today}"></div>
+    </div>
+    <div class="field"><label>Notes (optional)</label><textarea id="en-notes">${e?escapeHtml(e.notes||''):''}</textarea></div>
+    <button class="btn-solid" onclick="submitEntry(${e?`'${e.id}'`:'null'}, ${opts.followupId?`'${opts.followupId}'`:'null'})">${e?'Save Changes':'Save Entry'}</button>
+  `;
+  document.getElementById('modal-box').innerHTML = html;
+  document.getElementById('modal-overlay').style.display='flex';
+
+  document.getElementById('en-platform').value = e ? e.platform : (opts.presetPlatform || PLATFORMS[0]);
+  onPlatformChange(e && e.mgmt);
+  if(e){
+    document.getElementById('en-mgmt').value = e.mgmt;
+    onMgmtChange(e.tier);
+    document.getElementById('en-tier').value = e.tier;
+    onTierChange(e.duration);
+    if(document.getElementById('en-duration')) document.getElementById('en-duration').value = e.duration||'';
+  }
+  updateRateHint();
+  document.getElementById('en-gst-type').value = (e && e.gstType) ? e.gstType : 'Without GST';
+  onGstTypeChange();
+}
+function onGstTypeChange(){
+  const wrap = document.getElementById('en-gst-amount-wrap');
+  const isWithGst = document.getElementById('en-gst-type').value==='With GST';
+  wrap.style.display = isWithGst ? 'block' : 'none';
+  if(!isWithGst){ const amt=document.getElementById('en-gst-amount'); if(amt) amt.value=''; }
+  updateTotalDisplay();
+}
+function updateTotalDisplay(){
+  const revenue = parseFloat(document.getElementById('en-revenue').value) || 0;
+  const isWithGst = document.getElementById('en-gst-type').value==='With GST';
+  const gstAmt = isWithGst ? (parseFloat(document.getElementById('en-gst-amount').value) || 0) : 0;
+  const total = revenue + gstAmt;
+  document.getElementById('en-total-display').innerHTML = isWithGst
+    ? `Actual: <b>${fmtRev(revenue)}</b> &nbsp;+&nbsp; GST: <b>${fmtRev(gstAmt)}</b> &nbsp;=&nbsp; Total: <b>${fmtRev(total)}</b>`
+    : `Total Amount (no GST): <b>${fmtRev(total)}</b>`;
+}
+function onPlatformChange(presetMgmt){
+  const platform = document.getElementById('en-platform').value;
+  const mgmts = Object.keys(PLATFORM_CONFIG[platform].mgmtTypes);
+  const sel = document.getElementById('en-mgmt');
+  sel.innerHTML = mgmts.map(m=>`<option ${presetMgmt===m?'selected':''}>${escapeHtml(m)}</option>`).join('');
+  onMgmtChange();
+  const wrap = document.getElementById('en-outsourcing-wrap');
+  if(wrap){
+    const show = needsOutsourcing(platform);
+    wrap.style.display = show ? 'block' : 'none';
+    if(!show){ const inp = document.getElementById('en-outsourcing'); if(inp) inp.value=''; }
+  }
+}
+function onMgmtChange(presetTier){
+  const platform = document.getElementById('en-platform').value;
+  const mgmt = document.getElementById('en-mgmt').value;
+  const tiers = Object.keys(bySchemaTiers(platform, mgmt));
+  const sel = document.getElementById('en-tier');
+  sel.innerHTML = tiers.map(t=>`<option ${presetTier===t?'selected':''}>${escapeHtml(t)}</option>`).join('');
+  onTierChange();
+}
+function onTierChange(presetDuration){
+  const platform = document.getElementById('en-platform').value;
+  const mgmt = document.getElementById('en-mgmt').value;
+  const tier = document.getElementById('en-tier').value;
+  const wrap = document.getElementById('en-duration-wrap');
+  if(usesDuration(platform, mgmt, tier)){
+    wrap.style.display='block';
+    document.getElementById('en-duration').innerHTML = DURATIONS.map(d=>`<option ${presetDuration===d?'selected':''}>${d}</option>`).join('');
+  } else {
+    wrap.style.display='none';
+  }
+  updateRateHint();
+}
+function onDurationChange(){ updateRateHint(); }
+function updateRateHint(){
+  const platform = document.getElementById('en-platform').value;
+  const mgmt = document.getElementById('en-mgmt').value;
+  const tier = document.getElementById('en-tier').value;
+  const durEl = document.getElementById('en-duration');
+  const duration = (durEl && durEl.offsetParent!==null) ? durEl.value : null;
+  document.getElementById('en-rate-hint').innerHTML = rateHint(platform, mgmt, tier, duration);
+}
+async function submitEntry(id, followupId){
+  const execHidden = document.getElementById('en-exec-hidden');
+  let exec = execHidden ? execHidden.value : document.getElementById('en-exec').value;
+  if(exec==='__new__'){
+    const nm = document.getElementById('en-new-name').value.trim();
+    if(!nm){ alert('Please enter a name for the new executive.'); return; }
+    if(!EXECUTIVES.includes(nm)) EXECUTIVES.push(nm);
+    exec = nm;
+  }
+  const platform = document.getElementById('en-platform').value;
+  const mgmt = document.getElementById('en-mgmt').value;
+  const tier = document.getElementById('en-tier').value;
+  const durWrap = document.getElementById('en-duration-wrap');
+  const duration = (durWrap.style.display!=='none') ? document.getElementById('en-duration').value : '';
+  const brand = document.getElementById('en-brand').value.trim();
+  const revenue = parseFloat(document.getElementById('en-revenue').value) || 0;
+  const outsourcingWrapEn = document.getElementById('en-outsourcing-wrap');
+  const outsourcingAmount = (outsourcingWrapEn && outsourcingWrapEn.style.display!=='none') ? (parseFloat(document.getElementById('en-outsourcing').value) || 0) : 0;
+  const gstType = document.getElementById('en-gst-type').value;
+  const gstAmount = gstType==='With GST' ? (parseFloat(document.getElementById('en-gst-amount').value) || 0) : 0;
+  const totalAmount = revenue + gstAmount;
+  const status = document.getElementById('en-status').value;
+  const date = document.getElementById('en-date').value;
+  const notes = document.getElementById('en-notes').value.trim();
+  if(!brand){ alert('Please enter the brand name.'); return; }
+  if(!date){ alert('Please pick a date.'); return; }
+
+  if(id){
+    const e = ENTRIES.find(x=>x.id===id);
+    Object.assign(e, {executive:exec, platform, mgmt, tier, duration, brand, revenue, outsourcingAmount, gstType, gstAmount, totalAmount, status, date, notes});
+  } else {
+    ENTRIES.push({id:uid(), executive:exec, platform, mgmt, tier, duration, brand, revenue, outsourcingAmount, gstType, gstAmount, totalAmount, status, date, notes, followupId: followupId||null, createdAt:Date.now()});
+  }
+  const okEntries = await saveEntries();
+  await saveExecutives();
+
+  let okFollowup = true;
+  if(followupId){
+    const fu = FOLLOWUPS.find(f=>f.id===followupId);
+    if(fu){ fu.converted = true; fu.convertedAt = Date.now(); }
+    okFollowup = await saveFollowups();
+  }
+  closeModal();
+  const okAll = okEntries && okFollowup;
+  showToast(okAll
+    ? '✅ ' + (id?'Entry updated':(followupId?'Followup converted & saved to server':'Entry saved to server'))
+    : '⚠️ Saved locally — will sync when connection is back');
+  render();
+}
+/* ---------------- Bulk select (owner Entries table) ---------------- */
+function toggleEntrySelect(id, checked){
+  if(checked) SELECTED_ENTRY_IDS.add(id); else SELECTED_ENTRY_IDS.delete(id);
+  updateBulkDeleteBar();
+}
+function toggleSelectAllVisible(checked){
+  document.querySelectorAll('.entry-select-cb').forEach(cb=>{
+    cb.checked = checked;
+    const id = cb.getAttribute('data-id');
+    if(checked) SELECTED_ENTRY_IDS.add(id); else SELECTED_ENTRY_IDS.delete(id);
+  });
+  updateBulkDeleteBar();
+}
+function updateBulkDeleteBar(){
+  const bar = document.getElementById('bulk-delete-bar');
+  const cnt = document.getElementById('bulk-delete-count');
+  const selectAll = document.getElementById('select-all-entries');
+  if(bar) bar.style.display = SELECTED_ENTRY_IDS.size ? 'flex' : 'none';
+  if(cnt) cnt.textContent = SELECTED_ENTRY_IDS.size + ' selected';
+  if(selectAll){
+    const boxes = document.querySelectorAll('.entry-select-cb');
+    selectAll.checked = boxes.length>0 && Array.from(boxes).every(cb=>cb.checked);
+  }
+}
+function clearEntrySelection(){ SELECTED_ENTRY_IDS.clear(); render(); }
+
+/* ---------------- Owner-password confirmation gate ---------------- */
+let PENDING_CONFIRM_ACTION = null;
+function confirmOwnerPasswordThen(actionLabel, actionFn){
+  PENDING_CONFIRM_ACTION = actionFn;
+  const html = `
+    <div class="modal-head"><h3>🔒 Confirm Password</h3><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="note-strip">${escapeHtml(actionLabel)} — please re-enter your Owner password to confirm. This cannot be undone.</div>
+    <div class="field">
+      <label>Owner Password</label>
+      <input id="confirm-owner-pass" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')submitOwnerPasswordConfirm()">
+    </div>
+    <div class="lock-err" id="confirm-owner-err"></div>
+    <button class="btn-solid" style="background:linear-gradient(160deg,#c23a30,var(--gone-c));" onclick="submitOwnerPasswordConfirm()">Confirm &amp; Delete</button>
+  `;
+  document.getElementById('modal-box').innerHTML = html;
+  document.getElementById('modal-overlay').style.display='flex';
+  setTimeout(()=>{ const f=document.getElementById('confirm-owner-pass'); if(f) f.focus(); },50);
+}
+async function submitOwnerPasswordConfirm(){
+  const passInput = document.getElementById('confirm-owner-pass');
+  const err = document.getElementById('confirm-owner-err');
+  const pass = passInput ? passInput.value : '';
+  if(!pass){ if(err) err.textContent='Please enter your password.'; return; }
+  const saved = await kvGet(K_OWNER_PASS);
+  if(!saved || simpleHash(pass)!==saved){ if(err) err.textContent='Incorrect password.'; return; }
+  const action = PENDING_CONFIRM_ACTION;
+  PENDING_CONFIRM_ACTION = null;
+  closeModal();
+  if(action) await action();
+}
+
+/* ---------------- Delete a lead directly from Pipelines/Followups (owner) ----------------
+   Works whether the lead is still Pending or already Converted. Removes the
+   followup itself, and — if it was converted — the Records entry linked to
+   it too, so nothing is left dangling and it truly disappears from that
+   employee's dashboard. */
+function deleteFollowupAsOwner(id){
+  const f = FOLLOWUPS.find(x=>x.id===id);
+  if(!f) return;
+  const label = 'Delete this lead' + (f.converted ? ' (and its linked Records entry)' : '');
+  confirmOwnerPasswordThen(label, async ()=>{
+    FOLLOWUPS = FOLLOWUPS.filter(x=>x.id!==id);
+    let okEntries = true;
+    const linkedEntryExists = ENTRIES.some(e=>e.followupId===id);
+    if(linkedEntryExists){
+      ENTRIES = ENTRIES.filter(e=>e.followupId!==id);
+      okEntries = await saveEntries();
+    }
+    const okFollowup = await saveFollowups();
+    showToast((okFollowup && okEntries) ? '✅ Lead deleted & synced everywhere' : '⚠️ Delete pending — will sync when online');
+    render();
+  });
+}
+
+/* ---------------- Delete entry (single — password confirm) ---------------- */
+function deleteEntry(id){
+  confirmOwnerPasswordThen('Delete this entry', async ()=>{
+    const entry = ENTRIES.find(e=>e.id===id);
+    ENTRIES = ENTRIES.filter(e=>e.id!==id);
+    SELECTED_ENTRY_IDS.delete(id);
+    let okFollowup = true;
+    if(entry && entry.followupId){
+      // Fully remove the linked lead so it disappears from the employee's
+      // dashboard too — reverting it to "Pending" left it visible, which
+      // isn't what "delete syncs everywhere" should mean.
+      const before = FOLLOWUPS.length;
+      FOLLOWUPS = FOLLOWUPS.filter(f=>f.id!==entry.followupId);
+      if(FOLLOWUPS.length!==before) okFollowup = await saveFollowups();
+    }
+    const ok = await saveEntries();
+    showToast((ok && okFollowup) ? '✅ Entry deleted & synced everywhere' : '⚠️ Delete pending — will sync when online');
+    render();
+  });
+}
+
+/* ---------------- Delete entries (bulk — password confirm) ---------------- */
+function bulkDeleteEntries(){
+  if(!SELECTED_ENTRY_IDS.size) return;
+  const ids = Array.from(SELECTED_ENTRY_IDS);
+  confirmOwnerPasswordThen(`Delete ${ids.length} selected ${ids.length===1?'entry':'entries'}`, async ()=>{
+    const followupIdsToRemove = ENTRIES.filter(e=>SELECTED_ENTRY_IDS.has(e.id) && e.followupId).map(e=>e.followupId);
+    ENTRIES = ENTRIES.filter(e=>!SELECTED_ENTRY_IDS.has(e.id));
+    let okFollowup = true;
+    if(followupIdsToRemove.length){
+      const before = FOLLOWUPS.length;
+      FOLLOWUPS = FOLLOWUPS.filter(f=>!followupIdsToRemove.includes(f.id));
+      if(FOLLOWUPS.length!==before) okFollowup = await saveFollowups();
+    }
+    const ok = await saveEntries();
+    SELECTED_ENTRY_IDS.clear();
+    showToast((ok && okFollowup) ? `✅ ${ids.length} entries deleted & synced everywhere` : '⚠️ Delete pending — will sync when online');
+    render();
+  });
+}
+
+/* ============================================================
+   ANALYTICS — Owner only
+   ============================================================ */
+let analyticsExec = 'All';
+function analyticsHTML(){
+  const execOptions = ['All',...EXECUTIVES].map(e=>`<option ${analyticsExec===e?'selected':''}>${escapeHtml(e)}</option>`).join('');
+  let list = ENTRIES.slice();
+  if(analyticsExec!=='All') list = list.filter(e=>e.executive===analyticsExec);
+  const closed = closedOf(list);
+  const inProgress = list.filter(e=>e.status==='In Progress').length;
+  const revenue = sumRev(closed);
+  const revenueWithGst = sumRev(closed.filter(e=>e.gstType==='With GST'));
+  const revenueNoGst = sumRev(closed.filter(e=>e.gstType!=='With GST'));
+
+  const closedRows = closed.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(e=>`
+    <tr>
+      <td>${escapeHtml(e.date)}</td>
+      <td class="name-cell">${escapeHtml(e.brand)}</td>
+      <td>${escapeHtml(e.executive)}</td>
+      <td>${escapeHtml(e.platform)}</td>
+      <td>${escapeHtml(e.mgmt)} — ${escapeHtml(e.tier)}${e.duration?(' · '+escapeHtml(e.duration)):''}</td>
+      <td><b>${fmtRev(totalOf(e))}</b>${e.gstType==='With GST' ? ` <span style="color:var(--muted-2); font-weight:400;">(incl. GST ${fmtRev(e.gstAmount)})</span>` : ''}</td>
+    </tr>`).join('');
+
+  return `
+    <div class="section-title">Analytics</div>
+    <div class="section-sub">Executive-wise performance — accounts closed and revenue generated.</div>
+    ${targetStripHTML()}
+    <div class="exec-select-row">
+      <label class="eyebrow" style="margin:0;">Executive</label>
+      <select onchange="analyticsExec=this.value; render()">${execOptions}</select>
+    </div>
+    <div class="grid5">
+      <div class="stat-card"><div class="val">${list.length}</div><div class="lbl">Total Accounts</div></div>
+      <div class="stat-card"><div class="val c-active">${closed.length}</div><div class="lbl">Accounts Closed</div></div>
+      <div class="stat-card"><div class="val c-hold">${inProgress}</div><div class="lbl">In Progress</div></div>
+      <div class="stat-card"><div class="val">${fmtRev(revenueWithGst)}</div><div class="lbl">Revenue — With GST</div></div>
+      <div class="stat-card"><div class="val">${fmtRev(revenueNoGst)}</div><div class="lbl">Revenue — Without GST</div></div>
+    </div>
+    <div class="chart-grid2">
+      <div class="chart-card">
+        <h3>Revenue by Platform${analyticsExec==='All' ? '' : ' — '+escapeHtml(analyticsExec)}</h3>
+        <div class="chart-wrap" id="chart-platform-wrap"><canvas id="chart-platform"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Revenue by Executive</h3>
+        <div class="chart-wrap" id="chart-side-wrap"><canvas id="chart-side"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="eyebrow" style="margin-bottom:10px;">Accounts Closed${analyticsExec==='All'?'':' — '+escapeHtml(analyticsExec)} · Total: ${fmtRev(revenue)}</div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Date</th><th>Brand</th><th>Executive</th><th>Platform</th><th>Service</th><th>Total Amount</th></tr></thead>
+          <tbody>${closedRows || '<tr><td colspan="6" class="empty-note">No closed accounts yet for this selection.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+let chartPlatform=null, chartSide=null;
+const NO_DATA_HTML = '<div class="empty-note" style="padding:70px 10px;">No revenue logged yet for this selection.<br>Add an entry with a revenue amount to see this chart.</div>';
+function freshCanvas(wrapId, canvasId){
+  const wrap = document.getElementById(wrapId);
+  if(!wrap) return null;
+  wrap.innerHTML = `<canvas id="${canvasId}"></canvas>`;
+  return document.getElementById(canvasId);
+}
+function drawAnalyticsCharts(){
+  let list = ENTRIES.slice();
+  if(analyticsExec!=='All') list = list.filter(e=>e.executive===analyticsExec);
+  const closed = closedOf(list);
+
+  const byPlatform = {};
+  closed.forEach(e=>{ byPlatform[e.platform]=(byPlatform[e.platform]||0)+totalOf(e); });
+  const platLabels = Object.keys(byPlatform);
+  const c1 = freshCanvas('chart-platform-wrap','chart-platform');
+  if(!platLabels.length){ document.getElementById('chart-platform-wrap').innerHTML = NO_DATA_HTML; }
+  else if(c1){
+    new Chart(c1, { type:'doughnut', data:{ labels:platLabels, datasets:[{ data:platLabels.map(k=>byPlatform[k]), backgroundColor:['#2f5d94','#1f3a5f','#94580c','#166841','#ab2b23','#6b7a8c','#3c8dbc','#8c6b3f'] }] },
+      options:{ plugins:{legend:{position:'bottom', labels:{boxWidth:10, font:{size:11}}}} } });
+  }
+
+  const byExec = {};
+  EXECUTIVES.forEach(x=>byExec[x]=0);
+  closed.forEach(e=>{ byExec[e.executive]=(byExec[e.executive]||0)+totalOf(e); });
+  const execLabels = Object.keys(byExec).filter(k=>byExec[k]>0);
+  const c2 = freshCanvas('chart-side-wrap','chart-side');
+  if(!execLabels.length){ document.getElementById('chart-side-wrap').innerHTML = NO_DATA_HTML; }
+  else if(c2){
+    new Chart(c2, { type:'bar', data:{ labels:execLabels, datasets:[{ label:'Revenue', data:execLabels.map(k=>byExec[k]), backgroundColor:'#2f5d94', borderRadius:6 }] },
+      options:{ plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true } } } });
+  }
+}
+
+/* ============================================================
+   PIPELINE / FOLLOWUPS — Owner analytics view
+   ============================================================ */
+let pipelineEmp = 'All';
+function pipelineHTML(){
+  const empOptions = ['All',...EMPLOYEES.map(e=>e.name)].map(n=>`<option ${pipelineEmp===n?'selected':''}>${escapeHtml(n)}</option>`).join('');
+  let list = FOLLOWUPS.slice().sort((a,b)=>b.createdAt-a.createdAt);
+  if(pipelineEmp!=='All') list = list.filter(f=>f.employee===pipelineEmp);
+
+  const active = list.filter(f=>!f.converted);
+  const converted = list.filter(f=>f.converted);
+  const potentialRevenue = active.reduce((s,f)=>s+(Number(f.revenue)||0)+(f.interested?(Number(f.interested.revenue)||0):0),0);
+  const interestedCount = list.filter(f=>f.interested).length;
+
+  const rows = list.map(f=>`
+    <tr>
+      <td class="name-cell">${escapeHtml(f.employee)}</td>
+      <td>${escapeHtml(f.brand)}</td>
+      <td>${escapeHtml(f.contact||'—')}</td>
+      <td>${escapeHtml(f.serviceType)}</td>
+      <td>${fmtRev(f.revenue)}</td>
+      <td>${needsOutsourcing(f.serviceType) ? fmtRev(f.outsourcingAmount||0) : '—'}</td>
+      <td>${escapeHtml(f.duration||'—')}</td>
+      <td>${escapeHtml(f.expectedClosure)}</td>
+      <td>${f.interested ? (escapeHtml(f.interested.serviceType)+' · '+fmtRev(f.interested.revenue)+' · '+escapeHtml(f.interested.expectedClosure)) : '—'}</td>
+      <td><span class="pill ${f.converted?'done':'pending'}">${f.converted?'Converted':'Pending'}</span></td>
+      <td>
+        <div class="row-actions">
+          <button class="icon-btn del" onclick="deleteFollowupAsOwner('${f.id}')">🗑</button>
+        </div>
+      </td>
+    </tr>`).join('');
+
+  return `
+    <div class="section-title">Pipelines &amp; Followups</div>
+    <div class="section-sub">Every employee's live leads — filter by name to see who's working what.</div>
+    ${targetStripHTML()}
+    <div class="exec-select-row">
+      <label class="eyebrow" style="margin:0;">Employee</label>
+      <select onchange="pipelineEmp=this.value; render()">${empOptions}</select>
+    </div>
+    <div class="grid4">
+      <div class="stat-card"><div class="val">${active.length}</div><div class="lbl">Active Followups</div></div>
+      <div class="stat-card"><div class="val c-active">${converted.length}</div><div class="lbl">Converted to Records</div></div>
+      <div class="stat-card"><div class="val">${interestedCount}</div><div class="lbl">Also Interested In...</div></div>
+      <div class="stat-card"><div class="val">${fmtRev(potentialRevenue)}</div><div class="lbl">Potential Revenue (Active)</div></div>
+    </div>
+    <div class="chart-card">
+      <h3>Active Followups &amp; Potential Revenue by Employee</h3>
+      <div class="chart-wrap" id="pipe-chart-wrap"><canvas id="pipe-chart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div class="eyebrow" style="margin:0;">All Followups${pipelineEmp==='All'?'':' — '+escapeHtml(pipelineEmp)}</div></div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Employee</th><th>Brand</th><th>Contact</th><th>Service</th><th>Revenue</th><th>Outsourcing Amt</th><th>Duration</th><th>Expected Closure</th><th>Also Interested In</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="11" class="empty-note">No followups logged yet.</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div class="note-strip">Deleting here works whether the lead is still <b>Pending</b> or already <b>Converted</b> — it's removed from Firebase and disappears from that employee's dashboard immediately (its linked Records entry, if any, is removed too).</div>
+    </div>`;
+}
+let pipeChart=null;
+function drawPipelineChart(){
+  const byEmp = {};
+  EMPLOYEES.forEach(e=>byEmp[e.name]={count:0, revenue:0});
+  FOLLOWUPS.filter(f=>!f.converted).forEach(f=>{
+    if(!byEmp[f.employee]) byEmp[f.employee]={count:0, revenue:0};
+    byEmp[f.employee].count++;
+    byEmp[f.employee].revenue += (Number(f.revenue)||0)+(f.interested?(Number(f.interested.revenue)||0):0);
+  });
+  const labels = Object.keys(byEmp);
+  const c = freshCanvas('pipe-chart-wrap','pipe-chart');
+  if(!labels.length){ document.getElementById('pipe-chart-wrap').innerHTML = NO_DATA_HTML; return; }
+  if(c){
+    new Chart(c, { type:'bar', data:{ labels, datasets:[
+        { label:'Active Followups', data:labels.map(k=>byEmp[k].count), backgroundColor:'#2f5d94', borderRadius:6, yAxisID:'y' },
+      ]},
+      options:{ scales:{ y:{ beginAtZero:true, title:{display:true, text:'Count'} } } } });
+  }
+}
+
+/* ============================================================
+   EMPLOYEE — Followups view (their own leads only)
+   ============================================================ */
+function followupsHTML(){
+  const mine = FOLLOWUPS.filter(f=>f.employee===ROLE).sort((a,b)=>b.createdAt-a.createdAt);
+  const active = mine.filter(f=>!f.converted);
+  const converted = mine.filter(f=>f.converted);
+  const potentialRevenue = active.reduce((s,f)=>s+(Number(f.revenue)||0)+(f.interested?(Number(f.interested.revenue)||0):0),0);
+
+  const rows = mine.map(f=>{
+    const locked = !!f.converted;
+    const toggleCell = locked
+      ? `<button class="fu-toggle on" disabled title="Closed &amp; locked — only the Owner can edit or remove this now" style="opacity:.6; cursor:not-allowed;"></button>`
+      : `<button class="fu-toggle" title="Mark closed &amp; add to Records" onclick="onFollowupToggle('${f.id}')"></button>`;
+    const actionsCell = locked
+      ? `<span style="font-size:11px; color:var(--muted-2); white-space:nowrap;">🔒 Locked — Owner only</span>`
+      : `<div class="row-actions"><button class="icon-btn del" onclick="deleteFollowup('${f.id}')">🗑</button></div>`;
+    return `
+    <tr>
+      <td>${toggleCell}</td>
+      <td class="name-cell">${escapeHtml(f.brand)}</td>
+      <td>${escapeHtml(f.contact||'—')}</td>
+      <td>${escapeHtml(f.serviceType)}</td>
+      <td>${fmtRev(f.revenue)}</td>
+      <td>${needsOutsourcing(f.serviceType) ? fmtRev(f.outsourcingAmount||0) : '—'}</td>
+      <td>${escapeHtml(f.duration||'—')}</td>
+      <td>${escapeHtml(f.expectedClosure)}</td>
+      <td>${f.interested ? (escapeHtml(f.interested.serviceType)+' · '+fmtRev(f.interested.revenue)+(needsOutsourcing(f.interested.serviceType)?' · Outsourcing '+fmtRev(f.interested.outsourcingAmount||0):'')+' · '+escapeHtml(f.interested.duration||'—')+' · '+escapeHtml(f.interested.expectedClosure)) : '—'}</td>
+      <td><span class="pill ${f.converted?'done':'pending'}">${f.converted?'Converted':'Pending'}</span></td>
+      <td>${actionsCell}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="section-title">My Followups</div>
+    <div class="section-sub">Log every lead here. Flip the switch when a lead closes to send it straight to Records.</div>
+    ${targetStripHTML()}
+    <div class="grid3">
+      <div class="stat-card"><div class="val">${active.length}</div><div class="lbl">Active Followups</div></div>
+      <div class="stat-card"><div class="val c-active">${converted.length}</div><div class="lbl">Converted (Closed)</div></div>
+      <div class="stat-card"><div class="val">${fmtRev(potentialRevenue)}</div><div class="lbl">Potential Revenue</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="eyebrow" style="margin:0;">Your Leads</div>
+        <button class="btn solid" onclick="openFollowupModal()">+ Add Followup</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr>
+            <th>Closed?</th><th>Brand</th><th>Contact Number</th><th>Service Type</th><th>Revenue</th><th>Outsourcing Amt</th><th>Duration</th>
+            <th>Expected Closure</th><th>Also Interested In</th><th>Status</th><th>Actions</th>
+          </tr></thead>
+          <tbody>${rows || '<tr><td colspan="11" class="empty-note">No followups yet — click “+ Add Followup” to log your first lead.</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div class="note-strip">The <b>Closed?</b> switch glows red while a lead is still open. Flip it once the deal is done — it opens a short form and auto-adds the account to Records. Once closed, that followup <b>locks</b> here — no delete, no toggle. Any further edit or removal is done by the Owner on the Records &amp; Entries page.</div>
+    </div>`;
+}
+
+/* ---------------- Add Followup modal ---------------- */
+function followupServiceSelectHTML(idPrefix, presetVal, outsourcingWrapId){
+  const onchange = outsourcingWrapId ? ` onchange="toggleOutsourcingField('${idPrefix}','${outsourcingWrapId}')"` : '';
+  return `<select id="${idPrefix}"${onchange}>${SERVICE_TYPES.map(s=>`<option ${presetVal===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}</select>`;
+}
+function toggleOutsourcingField(serviceSelectId, wrapId){
+  const sel = document.getElementById(serviceSelectId);
+  const wrap = document.getElementById(wrapId);
+  if(!sel || !wrap) return;
+  const show = needsOutsourcing(sel.value);
+  wrap.style.display = show ? 'block' : 'none';
+  if(!show){ const inp = wrap.querySelector('input'); if(inp) inp.value=''; }
+}
+function followupDurationSelectHTML(idPrefix, presetVal){
+  return `<select id="${idPrefix}"><option value="">—</option>${DURATIONS.map(d=>`<option ${presetVal===d?'selected':''}>${d}</option>`).join('')}</select>`;
+}
+function followupClosureSelectHTML(idPrefix, presetVal){
+  return `<select id="${idPrefix}">${CLOSURE_OPTIONS.map(c=>`<option ${presetVal===c?'selected':''}>${c}</option>`).join('')}</select>`;
+}
+function openFollowupModal(id){
+  const f = id ? FOLLOWUPS.find(x=>x.id===id) : null;
+  const html = `
+    <div class="modal-head"><h3>${f?'Edit Followup':'Add New Followup'}</h3><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="field-grid">
+      <div class="field"><label>Brand Name</label><input id="fu-brand" type="text" placeholder="e.g. Sample Brand Co." value="${f?escapeHtml(f.brand):''}"></div>
+      <div class="field"><label>Contact Number</label><input id="fu-contact" type="text" placeholder="e.g. 98765 43210" value="${f?escapeHtml(f.contact||''):''}"></div>
+    </div>
+    <div class="field-grid">
+      <div class="field"><label>Service Type</label>${followupServiceSelectHTML('fu-service', f?f.serviceType:'', 'fu-outsourcing-wrap')}</div>
+      <div class="field"><label>Revenue (₹)</label><input id="fu-revenue" type="number" min="0" placeholder="e.g. 25000" value="${f?f.revenue:''}"></div>
+    </div>
+    <div class="field" id="fu-outsourcing-wrap" style="display:${f&&needsOutsourcing(f.serviceType)?'block':'none'};">
+      <label>Outsourcing Amount (₹)</label><input id="fu-outsourcing" type="number" min="0" placeholder="e.g. 5000" value="${f&&f.outsourcingAmount?f.outsourcingAmount:''}">
+    </div>
+    <div class="field-grid">
+      <div class="field"><label>Duration</label>${followupDurationSelectHTML('fu-duration', f?f.duration:'')}</div>
+      <div class="field"><label>Expected Time of Closure</label>${followupClosureSelectHTML('fu-closure', f?f.expectedClosure:'')}</div>
+    </div>
+    <label class="checkbox-row"><input type="checkbox" id="fu-interested-check" onchange="toggleInterestedFields()" ${f&&f.interested?'checked':''}> Also interested in another service?</label>
+    <div id="fu-interested-fields" style="display:${f&&f.interested?'block':'none'};">
+      <div class="group-label">🟡 Additionally Interested In</div>
+      <div class="field-grid">
+        <div class="field"><label>Service Type</label>${followupServiceSelectHTML('fu-int-service', f&&f.interested?f.interested.serviceType:'', 'fu-int-outsourcing-wrap')}</div>
+        <div class="field"><label>Revenue (₹)</label><input id="fu-int-revenue" type="number" min="0" placeholder="e.g. 15000" value="${f&&f.interested?f.interested.revenue:''}"></div>
+      </div>
+      <div class="field" id="fu-int-outsourcing-wrap" style="display:${f&&f.interested&&needsOutsourcing(f.interested.serviceType)?'block':'none'};">
+        <label>Outsourcing Amount (₹)</label><input id="fu-int-outsourcing" type="number" min="0" placeholder="e.g. 5000" value="${f&&f.interested&&f.interested.outsourcingAmount?f.interested.outsourcingAmount:''}">
+      </div>
+      <div class="field-grid">
+        <div class="field"><label>Duration</label>${followupDurationSelectHTML('fu-int-duration', f&&f.interested?f.interested.duration:'')}</div>
+        <div class="field"><label>Expected Time of Closure</label>${followupClosureSelectHTML('fu-int-closure', f&&f.interested?f.interested.expectedClosure:'')}</div>
+      </div>
+    </div>
+    <button class="btn-solid" onclick="submitFollowup(${f?`'${f.id}'`:'null'})">${f?'Save Changes':'Save Followup'}</button>`;
+  document.getElementById('modal-box').innerHTML = html;
+  document.getElementById('modal-overlay').style.display='flex';
+}
+function toggleInterestedFields(){
+  document.getElementById('fu-interested-fields').style.display = document.getElementById('fu-interested-check').checked ? 'block' : 'none';
+}
+async function submitFollowup(id){
+  const brand = document.getElementById('fu-brand').value.trim();
+  const contact = document.getElementById('fu-contact').value.trim();
+  const serviceType = document.getElementById('fu-service').value;
+  const revenue = parseFloat(document.getElementById('fu-revenue').value) || 0;
+  const outsourcingWrap = document.getElementById('fu-outsourcing-wrap');
+  const outsourcingAmount = (outsourcingWrap && outsourcingWrap.style.display!=='none') ? (parseFloat(document.getElementById('fu-outsourcing').value) || 0) : 0;
+  const duration = document.getElementById('fu-duration').value;
+  const expectedClosure = document.getElementById('fu-closure').value;
+  if(!brand){ alert('Please enter the brand name.'); return; }
+
+  let interested = null;
+  if(document.getElementById('fu-interested-check').checked){
+    const intOutWrap = document.getElementById('fu-int-outsourcing-wrap');
+    const intOutsourcingAmount = (intOutWrap && intOutWrap.style.display!=='none') ? (parseFloat(document.getElementById('fu-int-outsourcing').value) || 0) : 0;
+    interested = {
+      serviceType: document.getElementById('fu-int-service').value,
+      revenue: parseFloat(document.getElementById('fu-int-revenue').value) || 0,
+      outsourcingAmount: intOutsourcingAmount,
+      duration: document.getElementById('fu-int-duration').value,
+      expectedClosure: document.getElementById('fu-int-closure').value,
+    };
+  }
+
+  if(id){
+    const f = FOLLOWUPS.find(x=>x.id===id);
+    Object.assign(f, { brand, contact, serviceType, revenue, outsourcingAmount, duration, expectedClosure, interested });
+  } else {
+    FOLLOWUPS.push({ id:uid(), employee:ROLE, brand, contact, serviceType, revenue, outsourcingAmount, duration, expectedClosure, interested, converted:false, createdAt:Date.now() });
+  }
+  const ok = await saveFollowups();
+  closeModal();
+  showToast(ok
+    ? '✅ ' + (id?'Followup updated & synced to server':'Followup saved & synced to server')
+    : '⚠️ Saved locally — will auto-sync when connection is back');
+  render();
+}
+async function deleteFollowup(id){
+  const f = FOLLOWUPS.find(x=>x.id===id);
+  if(f && f.converted){ showToast('🔒 This followup is closed & locked — only the Owner can remove it now.'); return; }
+  if(!confirm('Delete this followup? This cannot be undone.')) return;
+  FOLLOWUPS = FOLLOWUPS.filter(f=>f.id!==id);
+  const ok = await saveFollowups();
+  showToast(ok ? '✅ Followup deleted & synced' : '⚠️ Delete pending — will sync when online');
+  render();
+}
+
+/* ---------------- Toggle: convert followup -> Records entry ---------------- */
+function onFollowupToggle(id){
+  const f = FOLLOWUPS.find(x=>x.id===id);
+  if(!f) return;
+  if(f.converted){ showToast('This followup is already in Records.'); return; }
+  openEntryModal(null, {
+    title: 'Mark Closed & Add to Records',
+    followupId: f.id,
+    presetExec: ROLE,
+    lockExec: true,
+    presetBrand: f.brand,
+    presetPlatform: PLATFORMS.includes(f.serviceType) ? f.serviceType : PLATFORMS[0],
+    presetRevenue: f.revenue,
+    presetOutsourcing: f.outsourcingAmount || ''
+  });
+}
+
+/* ============================================================
+   EXPORT / IMPORT (Owner only) — styled ExcelJS workbook
+   (Deleted entries/followups are never included — ENTRIES/FOLLOWUPS
+   arrays already drop items the moment they're deleted, so exports
+   are always a clean snapshot of live data only.)
+   ============================================================ */
+const XL_THEME = {
+  headerFill:'FF1F3A5F',   // deep navy — matches --gold
+  headerFill2:'FF2F5D94',  // secondary blue header — matches --gold-bright
+  altRow:'FFEEF1F6',       // matches --panel-2
+  headerFont:'FFFFFFFF',
+  text:'FF10161F',
+  muted:'FF6B7A8C',
+  won:'FF166841', lost:'FFAB2B23', hold:'FF94580C', prog:'FF2F5D94',
+  border:{style:'thin', color:{argb:'FFD0D7DE'}}
+};
+const XL_CUR = '"₹"#,##0';
+
+function xlHeaderRow(ws, headers, rowIdx, fillColor){
+  const row = ws.getRow(rowIdx);
+  headers.forEach((h,i)=>{
+    const c = row.getCell(i+1);
+    c.value = h;
+    c.font = {bold:true, color:{argb:XL_THEME.headerFont}, size:11, name:'Calibri'};
+    c.fill = {type:'pattern', pattern:'solid', fgColor:{argb:fillColor||XL_THEME.headerFill}};
+    c.alignment = {horizontal:'center', vertical:'middle'};
+    c.border = {top:XL_THEME.border, bottom:XL_THEME.border, left:XL_THEME.border, right:XL_THEME.border};
+  });
+  row.height = 20;
+  row.commit();
+}
+function xlDataRow(ws, values, rowIdx, opts){
+  opts = opts || {};
+  const row = ws.getRow(rowIdx);
+  const banded = (rowIdx % 2 === 0);
+  values.forEach((v,i)=>{
+    const c = row.getCell(i+1);
+    c.value = (v===undefined || v===null) ? '' : v;
+    c.font = {size:10.5, name:'Calibri', color:{argb:XL_THEME.text}};
+    c.border = {top:XL_THEME.border, bottom:XL_THEME.border, left:XL_THEME.border, right:XL_THEME.border};
+    if(banded) c.fill = {type:'pattern', pattern:'solid', fgColor:{argb:XL_THEME.altRow}};
+    if(opts.currencyCols && opts.currencyCols.includes(i)){ c.numFmt = XL_CUR; c.alignment = {horizontal:'right'}; }
+    if(opts.centerCols && opts.centerCols.includes(i)) c.alignment = {horizontal:'center'};
+  });
+  if(opts.statusCol!==undefined){
+    const sc = row.getCell(opts.statusCol+1);
+    const s = String(sc.value||'');
+    const clr = s==='Closed (Won)'||s==='Converted' ? XL_THEME.won : s==='Lost' ? XL_THEME.lost : s==='On Hold' ? XL_THEME.hold : s==='In Progress' ? XL_THEME.prog : XL_THEME.text;
+    sc.font = {bold:true, size:10.5, name:'Calibri', color:{argb:clr}};
+    sc.alignment = {horizontal:'center'};
+  }
+  row.commit();
+}
+function xlSectionTitle(ws, text, rowIdx){
+  const row = ws.getRow(rowIdx);
+  const c = row.getCell(1);
+  c.value = text;
+  c.font = {bold:true, size:13, name:'Calibri', color:{argb:XL_THEME.headerFill}};
+  row.commit();
+}
+
+async function exportToExcel(){
+  if(ROLE!=='owner'){ return; }
+  try{
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Records — Owner & Team Tracker';
+    wb.created = new Date();
+
+    /* ---------- Sheet 1: Entries ---------- */
+    const wsE = wb.addWorksheet('Entries', {views:[{state:'frozen', ySplit:1}]});
+    const eHeaders = ['Date','Executive','Platform','Service Type','Tier','Duration','Brand','GST Type','GST Amount','Actual Amount','Outsourcing Amount','Total Amount','Status','Notes'];
+    wsE.columns = [
+      {width:13},{width:14},{width:14},{width:20},{width:12},{width:12},{width:22},
+      {width:13},{width:13},{width:14},{width:16},{width:14},{width:15},{width:40}
+    ];
+    xlHeaderRow(wsE, eHeaders, 1);
+    const liveEntries = ENTRIES.slice().sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+    liveEntries.forEach((e,idx)=>{
+      xlDataRow(wsE, [
+        e.date, e.executive, e.platform, e.mgmt, e.tier, e.duration||'', e.brand,
+        e.gstType||'Without GST', e.gstAmount||0, e.revenue||0,
+        needsOutsourcing(e.platform) ? (e.outsourcingAmount||0) : '', totalOf(e), e.status, e.notes||''
+      ], idx+2, {currencyCols:[8,9,10,11], centerCols:[7,12], statusCol:12});
+    });
+    wsE.autoFilter = { from:{row:1,column:1}, to:{row:1,column:eHeaders.length} };
+
+    /* ---------- Sheet 2: Summary ---------- */
+    const wsS = wb.addWorksheet('Summary');
+    wsS.columns = [{width:24},{width:16},{width:14},{width:18},{width:14},{width:16}];
+    const closed = closedOf(ENTRIES);
+    let r = 1;
+    xlSectionTitle(wsS, 'Executive Summary', r); r+=2;
+    xlHeaderRow(wsS, ['Executive','Total Accounts','Closed (Won)','Revenue (Actual)','GST Collected','Total (incl. GST)'], r, XL_THEME.headerFill2); r++;
+    EXECUTIVES.forEach(exec=>{
+      const all = ENTRIES.filter(e=>e.executive===exec);
+      const won = all.filter(e=>e.status==='Closed (Won)');
+      xlDataRow(wsS, [exec, all.length, won.length, sumRev(won), won.filter(e=>e.gstType==='With GST').reduce((s,e)=>s+(Number(e.gstAmount)||0),0), won.reduce((s,e)=>s+totalOf(e),0)], r, {currencyCols:[3,4,5]});
+      r++;
+    });
+    r+=1;
+    xlSectionTitle(wsS, 'Platform Summary', r); r+=2;
+    xlHeaderRow(wsS, ['Platform','Total Accounts','Closed (Won)','Revenue (Actual)','GST Collected','Total (incl. GST)'], r, XL_THEME.headerFill2); r++;
+    PLATFORMS.forEach(plat=>{
+      const all = ENTRIES.filter(e=>e.platform===plat);
+      const won = all.filter(e=>e.status==='Closed (Won)');
+      xlDataRow(wsS, [plat, all.length, won.length, sumRev(won), won.filter(e=>e.gstType==='With GST').reduce((s,e)=>s+(Number(e.gstAmount)||0),0), won.reduce((s,e)=>s+totalOf(e),0)], r, {currencyCols:[3,4,5]});
+      r++;
+    });
+    r+=1;
+    xlSectionTitle(wsS, 'GST Overview — Closed (Won) Accounts', r); r+=2;
+    xlHeaderRow(wsS, ['Metric','Value'], r, XL_THEME.headerFill2); r++;
+    const gstMetrics = [
+      ['Total Actual Revenue', sumRev(closed)],
+      ['Total GST Collected', closed.filter(e=>e.gstType==='With GST').reduce((s,e)=>s+(Number(e.gstAmount)||0),0)],
+      ['Grand Total (incl. GST)', closed.reduce((s,e)=>s+totalOf(e),0)],
+      ['Accounts — With GST', closed.filter(e=>e.gstType==='With GST').length],
+      ['Accounts — Without GST', closed.filter(e=>e.gstType!=='With GST').length],
+    ];
+    gstMetrics.forEach(([k,v])=>{ xlDataRow(wsS, [k,v], r, {currencyCols: typeof v==='number' && k.toLowerCase().includes('revenue')||k.toLowerCase().includes('total')||k.toLowerCase().includes('gst collected') ? [1] : []}); r++; });
+    r+=1;
+    xlSectionTitle(wsS, 'Targets', r); r+=2;
+    xlHeaderRow(wsS, ['Metric','Value'], r, XL_THEME.headerFill2); r++;
+    [['Monthly Target', TARGET.amount||0],['Target Month', TARGET.month||'—'],
+     ['Weekly Target', TARGET.weeklyAmount||0],['Target Week', TARGET.week||'—']
+    ].forEach(([k,v])=>{ xlDataRow(wsS, [k,v], r, {currencyCols: typeof v==='number' ? [1] : []}); r++; });
+
+    /* ---------- Sheet 3: Followups ---------- */
+    const wsF = wb.addWorksheet('Followups', {views:[{state:'frozen', ySplit:1}]});
+    const fHeaders = ['Employee','Brand','Contact','Service Type','Revenue','Outsourcing Amount','Duration','Expected Closure','Interested Service','Interested Revenue','Interested Outsourcing Amount','Interested Duration','Interested Closure','Status'];
+    wsF.columns = [
+      {width:14},{width:20},{width:16},{width:18},{width:13},{width:16},{width:12},{width:15},
+      {width:18},{width:15},{width:18},{width:15},{width:15},{width:13}
+    ];
+    xlHeaderRow(wsF, fHeaders, 1, XL_THEME.headerFill2);
+    FOLLOWUPS.forEach((f,idx)=>{
+      xlDataRow(wsF, [
+        f.employee, f.brand, f.contact||'', f.serviceType, f.revenue||0,
+        needsOutsourcing(f.serviceType) ? (f.outsourcingAmount||0) : '', f.duration||'', f.expectedClosure||'',
+        f.interested?f.interested.serviceType:'', f.interested?f.interested.revenue:'',
+        (f.interested && needsOutsourcing(f.interested.serviceType)) ? (f.interested.outsourcingAmount||0) : '',
+        f.interested?f.interested.duration:'', f.interested?f.interested.expectedClosure:'',
+        f.converted?'Converted':'Pending'
+      ], idx+2, {currencyCols:[4,5,9,10], centerCols:[13], statusCol:13});
+    });
+    wsF.autoFilter = { from:{row:1,column:1}, to:{row:1,column:fHeaders.length} };
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'Records_Export.xlsx';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showToast('✅ Workbook exported');
+  }catch(err){
+    console.error(err);
+    showToast('⚠️ Export failed — please try again');
+  }
+}
+
+function triggerImport(){ document.getElementById('import-file-input').click(); }
+function handleImportFile(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async function(e){
+    try{
+      const bytes = new Uint8Array(e.target.result);
+      const wb = XLSX.read(bytes, {type:'array'});
+      const sheetName = wb.SheetNames.includes('Entries') ? 'Entries' : wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+      if(!rows.length){ alert('This sheet has no rows to import.'); return; }
+      let count = 0;
+      rows.forEach(row=>{
+        const brand = String(row['Brand']||'').trim();
+        if(!brand) return;
+        const exec = String(row['Executive']||'Unassigned').trim() || 'Unassigned';
+        if(!EXECUTIVES.includes(exec)) EXECUTIVES.push(exec);
+        const revenue = parseFloat(row['Actual Amount']) || 0;
+        const outsourcingAmount = parseFloat(row['Outsourcing Amount']) || 0;
+        const gstType = row['GST Type'] || 'Without GST';
+        const gstAmount = parseFloat(row['GST Amount']) || 0;
+        ENTRIES.push({
+          id:uid(), executive:exec, platform:row['Platform']||'', mgmt:row['Service Type']||'', tier:row['Tier']||'',
+          duration:row['Duration']||'', brand, gstType, gstAmount, revenue, outsourcingAmount, totalAmount: revenue+(gstType==='With GST'?gstAmount:0),
+          status: row['Status']||'In Progress', date: row['Date']||new Date().toISOString().slice(0,10),
+          notes: row['Notes']||'', followupId: null, createdAt: Date.now()
+        });
+        count++;
+      });
+      if(count===0){ alert('No valid rows found — make sure Brand names are filled in.'); return; }
+      await saveEntries(); await saveExecutives();
+      showToast(count+' entries imported'); setView('home');
+    }catch(err){
+      console.error(err);
+      alert('Could not read this file. Please upload a valid exported workbook (.xlsx).');
+    } finally {
+      evt.target.value = '';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+boot();
+</script>
+</body></html>
